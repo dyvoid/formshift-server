@@ -26,6 +26,9 @@ temp/
 .claude/
 .cursor/
 
+# --- Local tool binaries (not distributed; see README "Dev environment") ---
+tools/
+
 # --- Python ---
 __pycache__/
 *.py[cod]

@@ -24,6 +24,16 @@ uv run formshift-server --port 0
 
 (Entry point not implemented yet — see `docs/ROADMAP.md` for M0 scope.)
 
+### Dev environment
+
+- Python is managed by [uv](https://docs.astral.sh/uv/) (interpreter version pinned in
+  `pyproject.toml`).
+- The potrace module needs a `potrace` binary on `PATH`, or in the gitignored `tools/` directory
+  (dev convention: `tools/potrace-1.16.win64/potrace.exe`, from the official
+  [potrace 1.16 Windows release](https://potrace.sourceforge.net/download/1.16/potrace-1.16.win64.zip)).
+  potrace is GPL-2.0 and is always invoked as a subprocess — never a linked binding; see the
+  Constraints section of [docs/architecture/overview.md](docs/architecture/overview.md).
+
 ## Project Structure
 
 ```
