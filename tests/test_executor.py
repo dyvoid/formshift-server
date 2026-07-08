@@ -47,8 +47,8 @@ def test_linear_execution_produces_output() -> None:
     assert len(report.outputs) == 1
     assert report.outputs[0].data == b"HELLO!"
     assert report.outputs[0].type == TEXT
-    assert report.executed_nodes == ("up", "suf")
-    assert report.cached_nodes == ()
+    assert report.executed_nodes == {"up", "suf"}
+    assert report.cached_nodes == frozenset()
 
 
 def test_rerun_is_fully_cached() -> None:
@@ -60,8 +60,8 @@ def test_rerun_is_fully_cached() -> None:
     execute_graph(parse_graph(linear_graph(payload.id)), registry, session, cache)
     report = execute_graph(parse_graph(linear_graph(payload.id)), registry, session, cache)
 
-    assert report.cached_nodes == ("up", "suf")
-    assert report.executed_nodes == ()
+    assert report.cached_nodes == {"up", "suf"}
+    assert report.executed_nodes == frozenset()
     assert upper.runs == 1
     assert suffix.runs == 1
     assert report.outputs[0].data == b"HELLO!"
@@ -78,8 +78,8 @@ def test_param_change_reruns_only_downstream() -> None:
 
     assert upper.runs == 1  # upstream untouched
     assert suffix.runs == 2  # downstream of the change reruns
-    assert report.cached_nodes == ("up",)
-    assert report.executed_nodes == ("suf",)
+    assert report.cached_nodes == {"up"}
+    assert report.executed_nodes == {"suf"}
     assert report.outputs[0].data == b"HELLO?"
 
 
@@ -94,7 +94,7 @@ def test_identical_reupload_hits_cache() -> None:
     report = execute_graph(parse_graph(linear_graph(second.id)), registry, session, cache)
 
     assert upper.runs == 1  # content-hashed root: identical bytes, same key
-    assert report.cached_nodes == ("up", "suf")
+    assert report.cached_nodes == {"up", "suf"}
 
 
 def test_multi_input_order_is_part_of_the_key() -> None:

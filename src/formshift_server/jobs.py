@@ -80,10 +80,17 @@ class Job:
 class JobManager:
     """Owns jobs and the event log for one session."""
 
-    def __init__(self, session: Session, registry: ModuleRegistry, cache: ResultCache) -> None:
+    def __init__(
+        self,
+        session: Session,
+        registry: ModuleRegistry,
+        cache: ResultCache,
+        workers: int | None = None,
+    ) -> None:
         self._session = session
         self._registry = registry
         self._cache = cache
+        self._workers = workers
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self.events = EventLog()
@@ -140,6 +147,7 @@ class JobManager:
                 self._session,
                 self._cache,
                 draft=draft,
+                workers=self._workers,
                 on_node=on_node,
                 on_output=on_output,
                 cancel=job.cancel,

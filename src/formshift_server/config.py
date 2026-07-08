@@ -29,6 +29,8 @@ class ServerConfig:
     # non-loopback binding requires this (ADR 0003).
     token_explicit: bool = False
     allowed_hosts: frozenset[str] = DEFAULT_ALLOWED_HOSTS
+    # Worker threads per job for independent graph branches; None = cpu count.
+    workers: int | None = None
 
     def validate(self) -> None:
         if self.host not in LOOPBACK_HOSTS and not self.token_explicit:

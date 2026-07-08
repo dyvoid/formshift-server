@@ -24,6 +24,12 @@ def _build_config(argv: list[str] | None = None) -> ServerConfig:
     parser.add_argument("--host", default="127.0.0.1", help="Interface to bind (default loopback)")
     parser.add_argument("--port", type=int, default=7457, help="Port to bind; 0 = OS-assigned")
     parser.add_argument("--token", default=None, help="Auth token (overrides FORMSHIFT_TOKEN)")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Worker threads per job for independent graph branches (default: CPU count)",
+    )
     args = parser.parse_args(argv)
 
     token = args.token or os.environ.get("FORMSHIFT_TOKEN")
@@ -32,6 +38,7 @@ def _build_config(argv: list[str] | None = None) -> ServerConfig:
         port=args.port,
         token=token or generate_token(),
         token_explicit=token is not None,
+        workers=args.workers,
     )
     config.validate()
     return config

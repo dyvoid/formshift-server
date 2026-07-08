@@ -125,7 +125,7 @@ def create_app(config: ServerConfig, registry: ModuleRegistry | None = None) -> 
     @app.post("/v1/sessions", status_code=201)
     def create_session() -> dict[str, str]:
         session = store.create()
-        managers[session.id] = JobManager(session, registry, cache)
+        managers[session.id] = JobManager(session, registry, cache, workers=config.workers)
         return {"id": session.id}
 
     @app.delete("/v1/sessions/{session_id}", status_code=204)
