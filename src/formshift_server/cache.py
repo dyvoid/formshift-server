@@ -24,14 +24,20 @@ def recipe_key(
     module_version: str,
     params: dict[str, Any],
     input_keys: list[str],
+    draft: bool = False,
 ) -> str:
-    """Cache key for one node: its own recipe plus its inputs' keys, in port order."""
+    """Cache key for one node: its own recipe plus its inputs' keys, in port order.
+
+    Draft is part of the key: a draft result must never be served for a
+    full-quality request (ADR 0007).
+    """
     canonical = json.dumps(
         {
             "module": module_name,
             "version": module_version,
             "params": params,
             "inputs": input_keys,
+            "draft": draft,
         },
         sort_keys=True,
         separators=(",", ":"),

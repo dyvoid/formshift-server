@@ -7,16 +7,32 @@ enforced as middleware so no endpoint can forget them.
 
 from __future__ import annotations
 
+import asyncio
 import secrets
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 
 from . import __version__
+from .cache import ResultCache
 from .config import ServerConfig
+from .core import PotraceModule
+from .graph import parse_graph, validate_graph
+from .jobs import JobManager
+from .modules import ModuleRegistry
 from .sessions import Session, SessionStore
 
 _AUTH_EXEMPT_PATHS = frozenset({"/health"})
+
+_SSE_POLL_SECONDS = 0.05
+_SSE_KEEPALIVE_SECONDS = 15.0
+
+
+def default_registry() -> ModuleRegistry:
+    registry = ModuleRegistry()
+    registry.register(PotraceModule())
+    return registry
 
 
 def _hostname_of(header_value: str) -> str:
@@ -35,9 +51,12 @@ def _origin_hostname(origin: str) -> str | None:
     return None
 
 
-def create_app(config: ServerConfig) -> FastAPI:
+def create_app(config: ServerConfig, registry: ModuleRegistry | None = None) -> FastAPI:
     app = FastAPI(title="Formshift Server", version=__version__, openapi_url=None, docs_url=None)
     store = SessionStore()
+    registry = registry if registry is not None else default_registry()
+    cache = ResultCache()
+    managers: dict[str, JobManager] = {}
 
     @app.middleware("http")
     async def guard(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -77,14 +96,23 @@ def create_app(config: ServerConfig) -> FastAPI:
             raise HTTPException(status_code=404, detail="Session not found")
         return session
 
+    def _manager_or_404(session_id: str) -> JobManager:
+        manager = managers.get(session_id)
+        if manager is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return manager
+
     @app.post("/v1/sessions", status_code=201)
     def create_session() -> dict[str, str]:
-        return {"id": store.create().id}
+        session = store.create()
+        managers[session.id] = JobManager(session, registry, cache)
+        return {"id": session.id}
 
     @app.delete("/v1/sessions/{session_id}", status_code=204)
     def delete_session(session_id: str) -> None:
         if not store.delete(session_id):
             raise HTTPException(status_code=404, detail="Session not found")
+        managers.pop(session_id, None)
 
     @app.post("/v1/sessions/{session_id}/payloads", status_code=201)
     async def upload_payload(
@@ -111,8 +139,81 @@ def create_app(config: ServerConfig) -> FastAPI:
             headers={"X-Formshift-Type": payload.type},
         )
 
-    # Expose the store for later components (executor, jobs) and tests.
+    @app.get("/v1/modules")
+    def list_modules() -> list[dict[str, Any]]:
+        return [
+            {
+                "name": m.name,
+                "version": m.version,
+                "description": m.description,
+                "isolation": m.isolation,
+                "inputs": [{"name": p.name, "type": p.type} for p in m.inputs],
+                "outputs": [{"name": p.name, "type": p.type} for p in m.outputs],
+            }
+            for m in registry.manifests()
+        ]
+
+    @app.post("/v1/sessions/{session_id}/jobs", status_code=201)
+    async def submit_job(session_id: str, request: Request) -> dict[str, Any]:
+        session = _session_or_404(session_id)
+        manager = _manager_or_404(session_id)
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Body must be JSON") from exc
+        graph = parse_graph(body.get("graph") or {})
+        draft = bool(body.get("draft", False))
+        errors = validate_graph(graph, registry, session)
+        if errors:
+            raise HTTPException(status_code=422, detail=errors)
+        job = manager.submit(graph, draft)
+        return {"id": job.id, "status": job.status.value}
+
+    @app.get("/v1/sessions/{session_id}/jobs/{job_id}")
+    def get_job(session_id: str, job_id: str) -> dict[str, Any]:
+        manager = _manager_or_404(session_id)
+        job = manager.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return job.to_json()
+
+    @app.delete("/v1/sessions/{session_id}/jobs/{job_id}", status_code=204)
+    def cancel_job(session_id: str, job_id: str) -> None:
+        manager = _manager_or_404(session_id)
+        if not manager.cancel(job_id):
+            raise HTTPException(status_code=404, detail="Job not found")
+
+    @app.get("/v1/sessions/{session_id}/events")
+    async def events(session_id: str) -> StreamingResponse:
+        manager = _manager_or_404(session_id)
+
+        async def stream() -> Any:
+            cursor = 0
+            idle = 0.0
+            while True:
+                fresh = manager.events.since(cursor)
+                if fresh:
+                    for event in fresh:
+                        yield event.sse()
+                    cursor = fresh[-1].index + 1
+                    idle = 0.0
+                else:
+                    await asyncio.sleep(_SSE_POLL_SECONDS)
+                    idle += _SSE_POLL_SECONDS
+                    if idle >= _SSE_KEEPALIVE_SECONDS:
+                        yield ": keepalive\n\n"
+                        idle = 0.0
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    # Expose internals for tests and later components.
     app.state.store = store
     app.state.config = config
+    app.state.registry = registry
+    app.state.cache = cache
 
     return app

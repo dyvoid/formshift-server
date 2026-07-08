@@ -8,6 +8,7 @@ license = "MIT"
 authors = [{ name = "dyvoid" }]
 dependencies = [
     "fastapi>=0.115",
+    "pillow>=11",
     "uvicorn>=0.34",
 ]
 

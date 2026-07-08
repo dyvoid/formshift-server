@@ -48,8 +48,14 @@ class ModuleResult:
 class Module(Protocol):
     manifest: ModuleManifest
 
-    def run(self, inputs: dict[str, bytes], params: dict[str, Any]) -> dict[str, ModuleResult]:
-        """Execute with all input ports materialized; return one result per output port."""
+    def run(
+        self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
+    ) -> dict[str, ModuleResult]:
+        """Execute with all input ports materialized; return one result per output port.
+
+        A module with no special draft behavior ignores `draft` and runs at
+        full cost — the defined behavior (design doc, Draft and quality modes).
+        """
         ...
 
 

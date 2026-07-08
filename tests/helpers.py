@@ -22,7 +22,9 @@ class UpperModule:
         )
         self.runs = 0
 
-    def run(self, inputs: dict[str, bytes], params: dict[str, Any]) -> dict[str, ModuleResult]:
+    def run(
+        self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
+    ) -> dict[str, ModuleResult]:
         self.runs += 1
         return {"text": ModuleResult(type=TEXT, data=inputs["text"].upper())}
 
@@ -40,7 +42,9 @@ class SuffixModule:
         )
         self.runs = 0
 
-    def run(self, inputs: dict[str, bytes], params: dict[str, Any]) -> dict[str, ModuleResult]:
+    def run(
+        self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
+    ) -> dict[str, ModuleResult]:
         self.runs += 1
         suffix = str(params.get("suffix", "")).encode()
         return {"text": ModuleResult(type=TEXT, data=inputs["text"] + suffix)}
@@ -59,6 +63,8 @@ class ConcatModule:
         )
         self.runs = 0
 
-    def run(self, inputs: dict[str, bytes], params: dict[str, Any]) -> dict[str, ModuleResult]:
+    def run(
+        self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
+    ) -> dict[str, ModuleResult]:
         self.runs += 1
         return {"text": ModuleResult(type=TEXT, data=inputs["a"] + inputs["b"])}
