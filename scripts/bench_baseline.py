@@ -42,9 +42,10 @@ def make_design(width: int, height: int) -> bytes:
     return buffer.getvalue()
 
 
-def start_server() -> tuple[subprocess.Popen[str], str]:
+def start_server(extra_args: list[str] | None = None) -> tuple[subprocess.Popen[str], str]:
     process = subprocess.Popen(
-        [sys.executable, "-m", "formshift_server.cli", "--port", "0", "--token", TOKEN],
+        [sys.executable, "-m", "formshift_server.cli", "--port", "0", "--token", TOKEN]
+        + (extra_args or []),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -102,7 +103,7 @@ def bench(client: httpx.Client) -> list[tuple[str, str]]:
             params={"type": "raster/png"},
             content=data,
         )
-        return response.json()["id"]
+        return str(response.json()["id"])
 
     def trace_graph(payload_id: str, node_id: str = "t") -> dict[str, Any]:
         return {

@@ -90,6 +90,7 @@ async def _wait_terminal(
     client: httpx.AsyncClient, session_id: str, job_id: str, timeout: float = 10.0
 ) -> dict[str, Any]:
     deadline = asyncio.get_event_loop().time() + timeout
+    doc: dict[str, Any]
     while True:
         doc = (await client.get(f"/v1/sessions/{session_id}/jobs/{job_id}")).json()
         if doc["status"] in {"completed", "failed", "cancelled"}:

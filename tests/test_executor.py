@@ -147,7 +147,9 @@ def test_isolation_other_than_core_is_explicit_not_implemented() -> None:
             isolation="venv",
         )
 
-        def run(self, inputs: dict[str, bytes], params: dict[str, Any]) -> dict[str, Any]:
+        def run(
+            self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
+        ) -> dict[str, Any]:
             return {}
 
     registry = ModuleRegistry()

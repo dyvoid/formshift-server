@@ -54,6 +54,7 @@ async def _run_job(
     )
     assert submit.status_code == 201, submit.text
     job_id = submit.json()["id"]
+    doc: dict[str, Any]
     for _ in range(400):
         doc = (await client.get(f"/v1/sessions/{session_id}/jobs/{job_id}")).json()
         if doc["status"] in {"completed", "failed", "cancelled"}:
@@ -145,7 +146,7 @@ async def _collect_events(client: httpx.AsyncClient, session_id: str) -> list[di
     """
     transport = client._transport
     assert isinstance(transport, httpx.ASGITransport)
-    manager = transport.app.state.managers[session_id]  # type: ignore[union-attr]
+    manager = transport.app.state.managers[session_id]  # type: ignore[attr-defined]
     return [{"type": e.type, **e.data} for e in manager.events.since(0)]
 
 
