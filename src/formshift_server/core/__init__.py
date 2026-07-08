@@ -4,6 +4,7 @@ Architecturally just an extension like any other (design doc, Extensions);
 nothing in the engine special-cases it.
 """
 
+from .color import ColorMaskModule, PosterizeModule, SvgColorizeModule, SvgMergeModule
 from .potrace import PotraceModule
 from .raster import (
     CropModule,
@@ -14,10 +15,14 @@ from .raster import (
 )
 
 __all__ = [
+    "ColorMaskModule",
     "CropModule",
     "DownsampleModule",
     "LevelsModule",
+    "PosterizeModule",
     "PotraceModule",
     "RotateModule",
+    "SvgColorizeModule",
+    "SvgMergeModule",
     "ThresholdModule",
 ]

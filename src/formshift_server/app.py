@@ -18,11 +18,15 @@ from . import __version__
 from .cache import ResultCache
 from .config import ServerConfig
 from .core import (
+    ColorMaskModule,
     CropModule,
     DownsampleModule,
     LevelsModule,
+    PosterizeModule,
     PotraceModule,
     RotateModule,
+    SvgColorizeModule,
+    SvgMergeModule,
     ThresholdModule,
 )
 from .graph import parse_graph, validate_graph
@@ -44,6 +48,10 @@ def default_registry() -> ModuleRegistry:
     registry.register(LevelsModule())
     registry.register(ThresholdModule())
     registry.register(DownsampleModule())
+    registry.register(PosterizeModule())
+    registry.register(ColorMaskModule())
+    registry.register(SvgColorizeModule())
+    registry.register(SvgMergeModule())
     return registry
 
 
