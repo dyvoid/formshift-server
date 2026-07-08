@@ -227,5 +227,6 @@ def create_app(config: ServerConfig, registry: ModuleRegistry | None = None) -> 
     app.state.config = config
     app.state.registry = registry
     app.state.cache = cache
+    app.state.managers = managers
 
     return app
