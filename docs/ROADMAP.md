@@ -17,7 +17,8 @@ caching, security, isolation model, etc.) also lives there, not restated here.
 | Feature | Status | Description | ADR |
 |---|---|---|---|
 | M0: Trace (server slice) | Done | HTTP API w/ token auth + sessions, linear DAG executor, hash-chain cache, single potrace module in core env. Exit verified 2026-07-08: PNG → usable SVG entirely over HTTP against the real binary | [0002](adr/0002-http-plus-multiplexed-sse.md)–[0007](adr/0007-jobs-and-sse-events.md) |
-| M1: Pipeline (server slice) | In flight | Multi-node chains, cache invalidation under reorder, draft flag honored by at least one module, performance baseline on target hardware | — |
+| M1: Pipeline (server slice) | Done | Multi-node chains, cache invalidation under reorder (HTTP-level test), draft honored by image.downsample, [performance baseline](performance-baseline.md) recorded 2026-07-08 | [0008](adr/0008-draft-as-client-built-boundary-node.md) |
+| Raw-buffer interchange for co-located modules | Candidate | Baseline shows ~129 ms/node PNG codec cost at 3000×2250; a raw-buffer type (reserved `raster/rgba8`) behind the same contract is the known fix. Profile a real client workload first | — |
 | M2: Color (server slice) | Candidate | Multi-input merges w/ order-aware cache keys, parallelized per-color tracing, progressive streaming (disjoint path) | — |
 | M3: Extensions (server slice) | Candidate | Isolated-venv extension installation implemented; first out-of-core extension (background removal) | — |
 | M4: Print (server slice) | Candidate | Pinned-order progressive path for overlapping outputs | — |
