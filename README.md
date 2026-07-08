@@ -10,9 +10,10 @@ client and embeds this server as a subprocess; it lives in its own repository.
 
 ## Status
 
-Pre-M0. No implementation yet — this repo currently holds the design docs and project
-scaffolding. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for milestone sequencing and
-[`docs/architecture/design.md`](docs/architecture/design.md) for the full design.
+M0 ("Trace") complete: HTTP API with token auth and sessions, DAG executor with hash-chain
+caching, job lifecycle with cancellation and SSE progress, and a potrace tracing module. A PNG
+goes to SVG entirely through the HTTP API. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for milestone
+sequencing and [`docs/architecture/design.md`](docs/architecture/design.md) for the full design.
 
 ## Getting Started
 
@@ -20,9 +21,29 @@ scaffolding. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for milestone sequencing a
 # clone, install, run
 uv sync
 uv run formshift-server --port 0
+# prints: formshift-server listening on http://127.0.0.1:<port>
+#         token: <bearer token>
 ```
 
-(Entry point not implemented yet — see `docs/ROADMAP.md` for M0 scope.)
+All endpoints except `GET /health` require `Authorization: Bearer <token>`. Quick tour with curl:
+
+```
+BASE=http://127.0.0.1:<port>; AUTH="Authorization: Bearer <token>"
+curl -X POST -H "$AUTH" $BASE/v1/sessions                               # -> {"id": SID}
+curl -X POST -H "$AUTH" --data-binary @logo.png \
+     "$BASE/v1/sessions/$SID/payloads?type=raster/png"                  # -> {"id": PID}
+curl -X POST -H "$AUTH" -H "Content-Type: application/json" -d '{
+  "graph": {
+    "nodes":    [{"id": "trace", "module": "potrace.trace", "params": {"blacklevel": 0.5}}],
+    "bindings": [{"payload": "'$PID'", "node": "trace", "port": "image"}],
+    "outputs":  [{"node": "trace", "port": "svg"}]
+  }}' $BASE/v1/sessions/$SID/jobs                                       # -> {"id": JID}
+curl -H "$AUTH" $BASE/v1/sessions/$SID/jobs/$JID                        # -> outputs[].payload
+curl -H "$AUTH" $BASE/v1/sessions/$SID/payloads/<payload> -o out.svg
+```
+
+Run the test suite with `uv run pytest`; lint and type-check with `uv run ruff check .` and
+`uv run mypy`.
 
 ### Dev environment
 
