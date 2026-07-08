@@ -1,0 +1,15 @@
+# Normalize line endings: let git handle conversion, store LF in the repo.
+* text=auto eol=lf
+
+# Common binaries -- never normalize, never diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+
+# Lockfile is generated but committed for reproducibility; mark so it doesn't clutter diffs.
+uv.lock linguist-generated=true
