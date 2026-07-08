@@ -17,7 +17,14 @@ from fastapi.responses import StreamingResponse
 from . import __version__
 from .cache import ResultCache
 from .config import ServerConfig
-from .core import PotraceModule
+from .core import (
+    CropModule,
+    DownsampleModule,
+    LevelsModule,
+    PotraceModule,
+    RotateModule,
+    ThresholdModule,
+)
 from .graph import parse_graph, validate_graph
 from .jobs import JobManager
 from .modules import ModuleRegistry
@@ -32,6 +39,11 @@ _SSE_KEEPALIVE_SECONDS = 15.0
 def default_registry() -> ModuleRegistry:
     registry = ModuleRegistry()
     registry.register(PotraceModule())
+    registry.register(CropModule())
+    registry.register(RotateModule())
+    registry.register(LevelsModule())
+    registry.register(ThresholdModule())
+    registry.register(DownsampleModule())
     return registry
 
 

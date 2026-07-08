@@ -5,5 +5,19 @@ nothing in the engine special-cases it.
 """
 
 from .potrace import PotraceModule
+from .raster import (
+    CropModule,
+    DownsampleModule,
+    LevelsModule,
+    RotateModule,
+    ThresholdModule,
+)
 
-__all__ = ["PotraceModule"]
+__all__ = [
+    "CropModule",
+    "DownsampleModule",
+    "LevelsModule",
+    "PotraceModule",
+    "RotateModule",
+    "ThresholdModule",
+]
