@@ -5,31 +5,27 @@ instead of archaeology.
 
 ## Current focus
 
-Project scaffolding: AGENTS.md, docs, and repo conventions for the server-only repo. No engine code
-written yet.
+Starting M0 ("Trace" server slice) — see [docs/ROADMAP.md](docs/ROADMAP.md) and the Milestones
+section of [docs/architecture/design.md](docs/architecture/design.md).
 
 ## State
 
-- `formshift-proposal.md` (the full design doc, Parts 1 and 2) is in the repo root.
-- AI project boilerplate generated: AGENTS.md, README.md, docs/ROADMAP.md,
-  docs/architecture/overview.md, docs/adr/0001, docs/git-strategy.md, .gitignore, .gitattributes.
-- No `pyproject.toml`, no `src/formshift_server` package contents, no CI workflow yet.
-- Nothing committed to git yet (repo has an `origin` remote at `github.com:dyvoid/formshift-server`
-  but no commits).
+- Docs are standalone: full design in `docs/architecture/design.md`; the original proposal was
+  removed from the working tree and lives in the first commit's history.
+- No implementation yet: no `pyproject.toml`, no package contents, no tests, no CI workflow.
+- Working autonomously per user authorization (2026-07-08); commits stay local, no pushing.
 
 ## Next
 
-Start M0 ("Trace" server slice, see `docs/ROADMAP.md`): scaffold `pyproject.toml` (uv, Python
-version pin, ruff+mypy config), the `src/formshift_server` package skeleton, and the frozen v1
-contract surface (HTTP API with token auth + sessions, linear DAG executor, hash-chain cache,
-potrace module in the core environment). Write an ADR for each contract piece before or as it's
-frozen (see ADR 0001's `Proposed` status note).
+M0 skeleton on a `task/` branch: `pyproject.toml` (uv, Python 3.12 pin, fastapi/uvicorn deps,
+ruff+mypy+pytest config), `src/formshift_server` package skeleton, smoke test, merge to main. Then
+M0 proper: HTTP API with token auth + sessions, linear DAG executor, hash-chain cache, potrace
+module — ADRs alongside each frozen contract piece.
 
 ## Open questions
 
-- CI workflow provider/config not yet chosen (GitHub Actions is the obvious default given the
-  `origin` remote, but unconfirmed with the user).
-- Python version to pin has not been decided.
+- CI workflow (GitHub Actions) not yet configured; add once there's a test suite worth gating on.
+- potrace Windows binary to be downloaded into gitignored `tools/` (user-authorized).
 
 ---
 *Last updated: 2026-07-08*
