@@ -79,8 +79,11 @@ Client (HTTP)
 - **Core extension:** the classical CV stack (PIL, numpy, scipy, scikit-image) runs in the main
   package's own environment; it is architecturally just an extension, not specially privileged in
   the engine, only in default packaging.
-- Everything else (out-of-core extensions) is designed to run in its own process/venv, on demand,
-  speaking the same HTTP contract the engine is otherwise blind to.
+- Everything else (out-of-core extensions) runs in its own venv and process: installed via
+  `POST /v1/extensions` into a per-extension venv, executed per-invocation through a stdio runner
+  the engine is otherwise blind to (ADRs 0012–0013). A persistent per-extension worker speaking
+  the HTTP contract is the designed end state; the runner is the current transport behind the
+  same adapter.
 
 ## Constraints
 

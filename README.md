@@ -10,10 +10,13 @@ client and embeds this server as a subprocess; it lives in its own repository.
 
 ## Status
 
-M0 ("Trace") complete: HTTP API with token auth and sessions, DAG executor with hash-chain
-caching, job lifecycle with cancellation and SSE progress, and a potrace tracing module. A PNG
-goes to SVG entirely through the HTTP API. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for milestone
-sequencing and [`docs/architecture/design.md`](docs/architecture/design.md) for the full design.
+M0–M3 complete: HTTP API with token auth and sessions, parallel DAG executor with hash-chain
+caching, job lifecycle with cancellation and SSE progress, core raster/color/tracing modules,
+and isolated extension installation — extensions install into per-extension venvs
+(`POST /v1/extensions`) so their dependency pins can conflict with core's without breaking
+anything; background removal (rembg) is the first out-of-core extension. See
+[`docs/ROADMAP.md`](docs/ROADMAP.md) for milestone sequencing and
+[`docs/architecture/design.md`](docs/architecture/design.md) for the full design.
 
 ## Getting Started
 
@@ -43,7 +46,8 @@ curl -H "$AUTH" $BASE/v1/sessions/$SID/payloads/<payload> -o out.svg
 ```
 
 Run the test suite with `uv run pytest`; lint and type-check with `uv run ruff check .` and
-`uv run mypy`.
+`uv run mypy`. Two end-to-end tests download real packages from PyPI (extension isolation and
+the rembg extension); they skip unless `FORMSHIFT_TEST_NETWORK=1` is set.
 
 ### Dev environment
 
@@ -59,6 +63,7 @@ Run the test suite with `uv run pytest`; lint and type-check with `uv run ruff c
 
 ```
 src/formshift_server/   Server source (Python package, src layout)
+extensions/              First-party extension sources (installed via /v1/extensions)
 docs/                    Architecture, design, decisions, and guides
 AGENTS.md                Context and instructions for AI agents
 PICKUP.md                Session handoff — where the last session left off
