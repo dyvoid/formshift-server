@@ -68,15 +68,35 @@ class ModuleRegistry:
     _modules: dict[str, Module] = field(default_factory=dict)
 
     def register(self, module: Module) -> None:
+        """Register an in-process module. Its manifest must declare isolation="core"."""
         manifest = module.manifest
         if manifest.isolation != "core":
             raise NotImplementedError(
                 f"module {manifest.name!r} declares isolation={manifest.isolation!r}; "
-                "only 'core' is implemented in this version"
+                "in-process registration only implements 'core'"
             )
-        if manifest.name in self._modules:
-            raise ValueError(f"module {manifest.name!r} already registered")
-        self._modules[manifest.name] = module
+        self._add(module)
+
+    def register_isolated(self, module: Module) -> None:
+        """Register a module backed by an isolated environment (extensions.IsolatedModule).
+
+        Kept separate from `register` so an isolation declaration is honored by
+        construction: in-process modules can't claim isolation, and isolated
+        backends can't be registered as core (ADR 0012).
+        """
+        manifest = module.manifest
+        if manifest.isolation != "isolated":
+            raise NotImplementedError(
+                f"module {manifest.name!r} declares isolation={manifest.isolation!r}; "
+                "isolated registration only implements 'isolated'"
+            )
+        self._add(module)
+
+    def _add(self, module: Module) -> None:
+        name = module.manifest.name
+        if name in self._modules:
+            raise ValueError(f"module {name!r} already registered")
+        self._modules[name] = module
 
     def get(self, name: str) -> Module | None:
         return self._modules.get(name)

@@ -12,6 +12,7 @@ import argparse
 import os
 import socket
 import sys
+from pathlib import Path
 
 import uvicorn
 
@@ -30,6 +31,12 @@ def _build_config(argv: list[str] | None = None) -> ServerConfig:
         default=None,
         help="Worker threads per job for independent graph branches (default: CPU count)",
     )
+    parser.add_argument(
+        "--extensions-dir",
+        type=Path,
+        default=None,
+        help="Directory for installed extensions; omit to disable extension installation",
+    )
     args = parser.parse_args(argv)
 
     token = args.token or os.environ.get("FORMSHIFT_TOKEN")
@@ -39,6 +46,7 @@ def _build_config(argv: list[str] | None = None) -> ServerConfig:
         token=token or generate_token(),
         token_explicit=token is not None,
         workers=args.workers,
+        extensions_dir=args.extensions_dir,
     )
     config.validate()
     return config

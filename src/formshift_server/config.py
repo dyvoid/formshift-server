@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass, field
+from pathlib import Path
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
@@ -31,6 +32,11 @@ class ServerConfig:
     allowed_hosts: frozenset[str] = DEFAULT_ALLOWED_HOSTS
     # Worker threads per job for independent graph branches; None = cpu count.
     workers: int | None = None
+    # Where installed extensions (their venvs and copied sources) live.
+    # None = extension installation disabled; the embedding app opts in
+    # explicitly, because installing an extension executes downloaded code
+    # (ADR 0013).
+    extensions_dir: Path | None = None
 
     def validate(self) -> None:
         if self.host not in LOOPBACK_HOSTS and not self.token_explicit:

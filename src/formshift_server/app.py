@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
@@ -29,6 +30,7 @@ from .core import (
     SvgMergeModule,
     ThresholdModule,
 )
+from .extensions import ExtensionConflictError, ExtensionError, ExtensionManager
 from .graph import parse_graph, validate_graph
 from .jobs import JobManager
 from .modules import ModuleRegistry
@@ -77,6 +79,10 @@ def create_app(config: ServerConfig, registry: ModuleRegistry | None = None) -> 
     registry = registry if registry is not None else default_registry()
     cache = ResultCache()
     managers: dict[str, JobManager] = {}
+    extensions: ExtensionManager | None = None
+    if config.extensions_dir is not None:
+        extensions = ExtensionManager(config.extensions_dir, registry)
+        extensions.load_installed()
 
     @app.middleware("http")
     async def guard(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -173,6 +179,52 @@ def create_app(config: ServerConfig, registry: ModuleRegistry | None = None) -> 
             for m in registry.manifests()
         ]
 
+    @app.get("/v1/extensions")
+    def list_extensions() -> dict[str, Any]:
+        # "enabled" lets a client feature-detect without probing POST (ADR 0013).
+        if extensions is None:
+            return {"enabled": False, "extensions": []}
+        return {
+            "enabled": True,
+            "extensions": [
+                {
+                    "name": e.manifest.name,
+                    "version": e.manifest.version,
+                    "description": e.manifest.description,
+                    "isolation": e.manifest.isolation,
+                    "modules": [spec.manifest.name for spec in e.manifest.modules],
+                }
+                for e in extensions.installed()
+            ],
+        }
+
+    @app.post("/v1/extensions", status_code=201)
+    async def install_extension(request: Request) -> dict[str, Any]:
+        # Synchronous install: venv creation and dependency download run to
+        # completion before responding (ADR 0013 records the trade-off).
+        if extensions is None:
+            raise HTTPException(
+                status_code=503, detail="extension installation is disabled (no --extensions-dir)"
+            )
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Body must be JSON") from exc
+        path = body.get("path")
+        if not isinstance(path, str) or not path:
+            raise HTTPException(status_code=400, detail="'path' (extension source dir) required")
+        try:
+            installed = await asyncio.to_thread(extensions.install, Path(path))
+        except ExtensionConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (ExtensionError, NotImplementedError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {
+            "name": installed.manifest.name,
+            "version": installed.manifest.version,
+            "modules": [spec.manifest.name for spec in installed.manifest.modules],
+        }
+
     @app.post("/v1/sessions/{session_id}/jobs", status_code=201)
     async def submit_job(session_id: str, request: Request) -> dict[str, Any]:
         session = _session_or_404(session_id)
@@ -236,5 +288,6 @@ def create_app(config: ServerConfig, registry: ModuleRegistry | None = None) -> 
     app.state.registry = registry
     app.state.cache = cache
     app.state.managers = managers
+    app.state.extensions = extensions
 
     return app
