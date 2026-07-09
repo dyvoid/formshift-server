@@ -2,11 +2,33 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from formshift_server.modules import ModuleManifest, ModuleResult, PortSpec
 
 TEXT = "text/plain"
+
+
+class DelayModule:
+    """One input, one output: echoes text after params["seconds"]. Counts its runs."""
+
+    def __init__(self) -> None:
+        self.manifest = ModuleManifest(
+            name="test.delay",
+            version="1.0",
+            description="echo text after a delay",
+            inputs=(PortSpec("text", TEXT),),
+            outputs=(PortSpec("text", TEXT),),
+        )
+        self.runs = 0
+
+    def run(
+        self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
+    ) -> dict[str, ModuleResult]:
+        self.runs += 1
+        time.sleep(float(params.get("seconds", 0)))
+        return {"text": ModuleResult(type=TEXT, data=inputs["text"])}
 
 
 class UpperModule:

@@ -10,11 +10,13 @@ client and embeds this server as a subprocess; it lives in its own repository.
 
 ## Status
 
-M0–M3 complete: HTTP API with token auth and sessions, parallel DAG executor with hash-chain
+M0–M4 complete: HTTP API with token auth and sessions, parallel DAG executor with hash-chain
 caching, job lifecycle with cancellation and SSE progress, core raster/color/tracing modules,
-and isolated extension installation — extensions install into per-extension venvs
+isolated extension installation — extensions install into per-extension venvs
 (`POST /v1/extensions`) so their dependency pins can conflict with core's without breaking
-anything; background removal (rembg) is the first out-of-core extension. See
+anything; background removal (rembg) is the first out-of-core extension — and both progressive
+rendering paths (completion-order streaming, pinned-order output groups for overlapping
+results). See
 [`docs/ROADMAP.md`](docs/ROADMAP.md) for milestone sequencing and
 [`docs/architecture/design.md`](docs/architecture/design.md) for the full design.
 

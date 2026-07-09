@@ -129,7 +129,7 @@ class JobManager:
         def on_node(node_id: str, cached: bool) -> None:
             self.events.append("node.completed", {"job": job.id, "node": node_id, "cached": cached})
 
-        def on_output(output: ExecutionOutput) -> None:
+        def emit_output(output: ExecutionOutput, group: str | None) -> None:
             payload = self._session.add_payload(output.type, output.data)
             record = {
                 "node": output.node,
@@ -137,8 +137,44 @@ class JobManager:
                 "type": output.type,
                 "payload": payload.id,
             }
+            if group is not None:
+                record["group"] = group
             job.outputs.append(record)
             self.events.append("job.output", {"job": job.id, **record})
+
+        # Progressive rendering's pinned path (ADR 0014): outputs in a pinned
+        # group emit strictly in declared order; a member that finished early
+        # is held until everything listed before it has been emitted. Outputs
+        # outside pinned groups keep streaming in completion order.
+        group_orders = {g.id: g.order for g in graph.groups}
+        group_of: dict[tuple[str, str], str | None] = {}
+        pinned_sequence: dict[str, list[tuple[str, str]]] = {}
+        for ref in graph.outputs:
+            key = (ref.node, ref.port)
+            group_of[key] = ref.group
+            if ref.group is not None and group_orders[ref.group] == "pinned":
+                pinned_sequence.setdefault(ref.group, []).append(key)
+        held: dict[str, dict[tuple[str, str], ExecutionOutput]] = {}
+        next_index: dict[str, int] = dict.fromkeys(pinned_sequence, 0)
+        gate = threading.Lock()
+
+        def on_output(output: ExecutionOutput) -> None:
+            key = (output.node, output.port)
+            group = group_of.get(key)
+            if group is None or group not in pinned_sequence:
+                emit_output(output, group)
+                return
+            # Emission happens under the lock so a flush from one worker
+            # cannot interleave with another's; event appends are in-memory.
+            with gate:
+                held.setdefault(group, {})[key] = output
+                sequence = pinned_sequence[group]
+                while next_index[group] < len(sequence):
+                    ready = held[group].pop(sequence[next_index[group]], None)
+                    if ready is None:
+                        break
+                    emit_output(ready, group)
+                    next_index[group] += 1
 
         try:
             execute_graph(

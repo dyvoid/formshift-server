@@ -42,6 +42,20 @@ class Binding:
 class OutputRef:
     node: str
     port: str
+    # Optional membership in a declared output group (ADR 0014).
+    group: str | None = None
+
+
+# Emission-order semantics for one output group (ADR 0014): "completion" is
+# the disjoint path (stream as results land); "pinned" holds each member's
+# emission until every member listed before it has been emitted.
+OUTPUT_GROUP_ORDERS = frozenset({"completion", "pinned"})
+
+
+@dataclass(frozen=True)
+class OutputGroup:
+    id: str
+    order: str
 
 
 @dataclass(frozen=True)
@@ -50,6 +64,7 @@ class Graph:
     edges: tuple[Edge, ...]
     bindings: tuple[Binding, ...]
     outputs: tuple[OutputRef, ...]
+    groups: tuple[OutputGroup, ...] = ()
 
 
 class GraphValidationError(Exception):
@@ -78,10 +93,17 @@ def parse_graph(data: dict[str, Any]) -> Graph:
             Binding(payload=b["payload"], node=b["node"], port=b["port"])
             for b in data.get("bindings", [])
         )
-        outputs = tuple(OutputRef(node=o["node"], port=o["port"]) for o in data.get("outputs", []))
+        outputs = tuple(
+            OutputRef(node=o["node"], port=o["port"], group=o.get("group"))
+            for o in data.get("outputs", [])
+        )
+        groups = tuple(
+            OutputGroup(id=g["id"], order=str(g.get("order", "completion")))
+            for g in data.get("groups", [])
+        )
     except (KeyError, TypeError) as exc:
         raise GraphValidationError([f"malformed graph: {exc!r}"]) from exc
-    return Graph(nodes=nodes, edges=edges, bindings=bindings, outputs=outputs)
+    return Graph(nodes=nodes, edges=edges, bindings=bindings, outputs=outputs, groups=groups)
 
 
 def validate_graph(graph: Graph, registry: ModuleRegistry, session: Session) -> list[str]:
@@ -154,9 +176,26 @@ def validate_graph(graph: Graph, registry: ModuleRegistry, session: Session) -> 
             elif count > 1:
                 errors.append(f"input port {node.id}:{port.name} is fed {count} times")
 
+    groups_by_id: dict[str, OutputGroup] = {}
+    for group in graph.groups:
+        if not group.id:
+            errors.append("output group without an id")
+        if group.id in groups_by_id:
+            errors.append(f"duplicate output group id {group.id!r}")
+        groups_by_id[group.id] = group
+        if group.order not in OUTPUT_GROUP_ORDERS:
+            errors.append(
+                f"output group {group.id!r}: unknown order {group.order!r} "
+                f"(implemented: {sorted(OUTPUT_GROUP_ORDERS)})"
+            )
+
     for out in graph.outputs:
         if output_type(out.node, out.port) is None:
             errors.append(f"output references unknown port {out.node!r}:{out.port!r}")
+        if out.group is not None and out.group not in groups_by_id:
+            errors.append(
+                f"output {out.node}:{out.port} references undeclared group {out.group!r}"
+            )
 
     if topological_order(graph) is None:
         errors.append("graph contains a cycle")

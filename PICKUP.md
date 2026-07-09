@@ -5,9 +5,11 @@ instead of archaeology.
 
 ## Current focus
 
-M3 server slice complete and committed; next is M4 ("Print" server slice: pinned-order progressive
-path for overlapping outputs) — see [docs/ROADMAP.md](docs/ROADMAP.md) and the Milestones section
-of [docs/architecture/design.md](docs/architecture/design.md).
+M3 and M4 server slices complete and committed; next is M5 ("Open house"), which is **gated on a
+non-Vector consumer existing** — do not start it speculatively. Until that gate opens, the useful
+work is the follow-ups list below and whatever the Vector client surfaces — see
+[docs/ROADMAP.md](docs/ROADMAP.md) and the Milestones section of
+[docs/architecture/design.md](docs/architecture/design.md).
 
 ## State
 
@@ -27,8 +29,14 @@ of [docs/architecture/design.md](docs/architecture/design.md).
   - **Exit condition verified 2026-07-09**: `tests/test_extension_conflict_e2e.py` installs an
     extension pinning `pillow==10.4.0` against core's 12.x over the real HTTP API and runs it —
     conflicting pins, isolated venv, correct output. Verified in-session on Linux/py3.12.
-- 100 tests pass without network; 2 more are gated behind `FORMSHIFT_TEST_NETWORK=1` (real PyPI
-  downloads). ruff + mypy strict clean (src, tests, scripts). ADRs 0002–0013.
+- **M4 done** (2026-07-09):
+  - Pinned-order output groups: `outputs[].group` + `groups[].order` (`completion` | `pinned`);
+    the job layer holds pinned-group outputs so they emit in declared order; ADR 0014.
+  - **Exit condition verified 2026-07-09**: `tests/test_pinned_order.py` builds a fan-out where
+    the first-declared output completes last and asserts it still emits first (plus: groups don't
+    block each other, completion groups still stream, invalid group specs are 422s).
+- 104 tests pass without network; 2 more are gated behind `FORMSHIFT_TEST_NETWORK=1` (real PyPI
+  downloads). ruff + mypy strict clean (src, tests, scripts). ADRs 0002–0014.
 
 ## Session notes (2026-07-09, remote sandbox)
 
@@ -40,19 +48,22 @@ of [docs/architecture/design.md](docs/architecture/design.md).
   `FORMSHIFT_TEST_NETWORK=1 uv run pytest tests/test_removebg_e2e.py` once on an open-network
   machine to see the full cut-out path green.** Model weights land in `U2NET_HOME`
   (default `~/.u2net`); the test redirects them to a tmp dir.
+- Milestone tags: `m1` pushed; pushes of `m2`/`m3`/`m4` got persistent 403s from the session's
+  git proxy (branch pushes work fine). Tags exist locally in the sandbox clone — recreate/push
+  them from a normal checkout: `m2` = 9145666, `m3` = 41388ac, `m4` = the M4 merge commit.
 
 ## Next
 
-M4 server-slice items (design doc, Milestones):
-1. **Pinned-order progressive path** — the second progressive-rendering code path: output groups
-   that deliberately overlap (print separations with underbase) must stream in pinned order, not
-   completion order.
-2. **Exit**: overlapping output groups render in pinned order, verified by test.
+M5 is gated on a non-Vector consumer; don't start it without one. Worthwhile non-gated work:
 
-M3 follow-ups worth picking up opportunistically (none block M4):
-- Persistent per-extension worker process (amortize model load; ADR 0012 records the upgrade path
-  behind the same adapter).
+- Persistent per-extension worker process (amortize model load per run; ADR 0012 records the
+  upgrade path behind the same `IsolatedModule` adapter).
 - Extension uninstall/upgrade endpoints once something needs them (ADR 0013).
+- Raw-buffer interchange for co-located modules (`raster/rgba8`) — roadmap candidate; profile a
+  real client workload first (M1 baseline showed ~129 ms/node PNG codec cost at 3000×2250).
+- CI (GitHub Actions): repo is on GitHub now and the quality gate is scriptable
+  (`uv run pytest`, `ruff check .`, `mypy`, `mypy tests scripts`) — needs human review per
+  AGENTS.md before landing.
 
 ## Open questions
 
