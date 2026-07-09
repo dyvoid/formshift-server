@@ -35,8 +35,13 @@ work is the follow-ups list below and whatever the Vector client surfaces — se
   - **Exit condition verified 2026-07-09**: `tests/test_pinned_order.py` builds a fan-out where
     the first-declared output completes last and asserts it still emits first (plus: groups don't
     block each other, completion groups still stream, invalid group specs are 422s).
-- 104 tests pass without network; 2 more are gated behind `FORMSHIFT_TEST_NETWORK=1` (real PyPI
-  downloads). ruff + mypy strict clean (src, tests, scripts). ADRs 0002–0014.
+- **Persistent extension workers** (2026-07-09, post-M4 follow-up): one long-lived worker process
+  per extension replaces process-per-invocation; imports/model sessions amortize across runs
+  (removebg now caches its ONNX session), crash/hang → ModuleError + respawn on next request,
+  requests serialized per worker; ADR 0015. Verified: reuse, exception-survival, hard-crash
+  respawn, concurrency tests, plus the gated conflict e2e re-run green over the worker path.
+- 108 tests pass without network; 2 more are gated behind `FORMSHIFT_TEST_NETWORK=1` (real PyPI
+  downloads). ruff + mypy strict clean (src, tests, scripts). ADRs 0002–0015.
 
 ## Session notes (2026-07-09, remote sandbox)
 
@@ -56,8 +61,6 @@ work is the follow-ups list below and whatever the Vector client surfaces — se
 
 M5 is gated on a non-Vector consumer; don't start it without one. Worthwhile non-gated work:
 
-- Persistent per-extension worker process (amortize model load per run; ADR 0012 records the
-  upgrade path behind the same `IsolatedModule` adapter).
 - Extension uninstall/upgrade endpoints once something needs them (ADR 0013).
 - Raw-buffer interchange for co-located modules (`raster/rgba8`) — roadmap candidate; profile a
   real client workload first (M1 baseline showed ~129 ms/node PNG codec cost at 3000×2250).

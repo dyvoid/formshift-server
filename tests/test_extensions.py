@@ -49,10 +49,17 @@ type = "text/plain"
 """
 
 SHOUT_CODE = '''\
+import os
+
+
 def run(inputs, params, draft):
     text = inputs["text"].upper()
     if params.get("crash"):
         raise RuntimeError("asked to crash")
+    if params.get("die"):
+        os._exit(3)
+    if params.get("pid"):
+        return {"text": ("text/plain", str(os.getpid()).encode())}
     if params.get("exclaim"):
         text += b"!"
     return {"text": ("text/plain", text)}
@@ -224,6 +231,65 @@ def test_load_installed_skips_incomplete_installs(tmp_path: Path) -> None:
     (extensions_dir / "broken" / "src").mkdir(parents=True)  # no installed.json
     manager = ExtensionManager(extensions_dir, ModuleRegistry())
     assert manager.load_installed() == []
+
+
+# --- worker lifecycle (ADR 0015) ---
+
+
+def test_worker_process_is_reused_across_runs(
+    manager: ExtensionManager, shout_source: Path
+) -> None:
+    manager.install(shout_source)
+    module = manager._registry.get("text.shout")
+    assert module is not None
+    first = module.run({"text": b"x"}, {"pid": True})["text"].data
+    second = module.run({"text": b"x"}, {"pid": True})["text"].data
+    assert first == second  # same long-lived process, imports amortized
+
+
+def test_worker_survives_module_exceptions(
+    manager: ExtensionManager, shout_source: Path
+) -> None:
+    from formshift_server.modules import ModuleError
+
+    manager.install(shout_source)
+    module = manager._registry.get("text.shout")
+    assert module is not None
+    before = module.run({"text": b"x"}, {"pid": True})["text"].data
+    with pytest.raises(ModuleError, match="asked to crash"):
+        module.run({"text": b"x"}, {"crash": True})
+    after = module.run({"text": b"x"}, {"pid": True})["text"].data
+    assert before == after  # an ordinary module error must not cost the process
+
+
+def test_worker_respawns_after_hard_crash(
+    manager: ExtensionManager, shout_source: Path
+) -> None:
+    from formshift_server.modules import ModuleError
+
+    manager.install(shout_source)
+    module = manager._registry.get("text.shout")
+    assert module is not None
+    before = module.run({"text": b"x"}, {"pid": True})["text"].data
+    with pytest.raises(ModuleError, match="worker exited"):
+        module.run({"text": b"x"}, {"die": True})
+    after = module.run({"text": b"x"}, {"pid": True})["text"].data
+    assert before != after  # fresh process
+    assert module.run({"text": b"ok"}, {})["text"].data == b"OK"
+
+
+def test_concurrent_runs_serialize_correctly(
+    manager: ExtensionManager, shout_source: Path
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    manager.install(shout_source)
+    module = manager._registry.get("text.shout")
+    assert module is not None
+    words = [f"word{i}".encode() for i in range(8)]
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda w: module.run({"text": w}, {})["text"].data, words))
+    assert results == [w.upper() for w in words]  # no cross-talk on the shared worker
 
 
 # --- HTTP surface ---

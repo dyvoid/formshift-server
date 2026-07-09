@@ -4,9 +4,10 @@ An extension is a source directory containing an ``extension.toml`` manifest
 plus the Python files implementing its modules. Installation copies the source
 under the server's extensions directory, creates a private venv with the
 server's own interpreter, installs the extension's pinned requirements into
-it, and registers one `IsolatedModule` per declared module. Each module run
-is a fresh runner subprocess (extension_runner.py) speaking JSON over stdio;
-the engine stays blind to what's inside, exactly as with core modules.
+it, and registers one `IsolatedModule` per declared module. Runs go to a
+persistent per-extension worker process (extension_runner.py) speaking
+newline-delimited JSON over stdio (ADR 0015); the engine stays blind to
+what's inside, exactly as with core modules.
 
 Only ``isolation = "isolated"`` is implemented for installed extensions.
 Sharing an environment (workspace grouping) is M5; anything else is an
@@ -15,12 +16,14 @@ explicit not-implemented error, never a silent shared install.
 
 from __future__ import annotations
 
+import atexit
 import base64
 import json
 import re
 import shutil
 import subprocess
 import sys
+import threading
 import tomllib
 import venv
 from dataclasses import dataclass
@@ -157,19 +160,98 @@ def _venv_python(venv_dir: Path) -> Path:
     return venv_dir / "bin" / "python"
 
 
-class IsolatedModule:
-    """Module protocol adapter: each run is a runner subprocess in the extension venv."""
+class ExtensionWorker:
+    """One long-lived runner process per extension (ADR 0015).
 
-    def __init__(self, manifest: ModuleManifest, entry: str, src_dir: Path, venv_dir: Path):
+    Spawned lazily on first request, restarted on the next request after a
+    crash or timeout. Requests are serialized on one lock: modules of one
+    extension never run concurrently in it (single copy of model memory);
+    different extensions' workers are independent, so cross-extension
+    parallelism is unaffected.
+    """
+
+    def __init__(self, python: Path, name: str) -> None:
+        self._python = python
+        self._name = name
+        self._lock = threading.Lock()
+        self._process: subprocess.Popen[str] | None = None
+        atexit.register(self.stop)
+
+    def _ensure_started(self) -> subprocess.Popen[str]:
+        if self._process is None or self._process.poll() is not None:
+            try:
+                self._process = subprocess.Popen(
+                    [str(self._python), str(_RUNNER_PATH)],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    encoding="utf-8",
+                )
+            except OSError as exc:
+                raise ModuleError(
+                    f"failed to start worker for extension {self._name!r}: {exc}"
+                ) from exc
+        return self._process
+
+    def stop(self) -> None:
+        process, self._process = self._process, None
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait(timeout=10)
+
+    def request(self, payload: dict[str, Any], *, timeout: float, context: str) -> dict[str, Any]:
+        """Send one JSON request; kill and report if the worker hangs or dies."""
+        with self._lock:
+            process = self._ensure_started()
+            stdin, stdout = process.stdin, process.stdout
+            assert stdin is not None and stdout is not None
+            timed_out = threading.Event()
+
+            def kill_hung_worker() -> None:
+                timed_out.set()
+                process.kill()
+
+            watchdog = threading.Timer(timeout, kill_hung_worker)
+            watchdog.start()
+            try:
+                stdin.write(json.dumps(payload) + "\n")
+                stdin.flush()
+                line = stdout.readline()
+            except (OSError, ValueError) as exc:
+                self.stop()
+                raise ModuleError(f"{context}: worker pipe failed: {exc}") from exc
+            finally:
+                watchdog.cancel()
+            if not line:
+                exit_code = process.poll()
+                self.stop()
+                if timed_out.is_set():
+                    raise ModuleError(f"{context}: timed out after {timeout:.0f}s")
+                raise ModuleError(f"{context}: worker exited with {exit_code}")
+            try:
+                response: dict[str, Any] = json.loads(line)
+            except ValueError as exc:
+                self.stop()  # protocol out of sync; start clean next time
+                raise ModuleError(f"{context}: worker returned invalid output") from exc
+            return response
+
+
+class IsolatedModule:
+    """Module protocol adapter: runs execute in the extension's worker process."""
+
+    def __init__(
+        self, manifest: ModuleManifest, entry: str, src_dir: Path, worker: ExtensionWorker
+    ) -> None:
         self.manifest = manifest
         self._entry = entry
         self._src_dir = src_dir
-        self._python = _venv_python(venv_dir)
+        self._worker = worker
 
     def run(
         self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
     ) -> dict[str, ModuleResult]:
-        request = json.dumps(
+        response = self._worker.request(
             {
                 "src": str(self._src_dir),
                 "entry": self._entry,
@@ -178,38 +260,12 @@ class IsolatedModule:
                 },
                 "params": params,
                 "draft": draft,
-            }
-        ).encode()
-
-        try:
-            proc = subprocess.run(
-                [str(self._python), str(_RUNNER_PATH)],
-                input=request,
-                capture_output=True,
-                timeout=_RUN_TIMEOUT_SECONDS,
-                check=False,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise ModuleError(
-                f"module {self.manifest.name!r} timed out after {_RUN_TIMEOUT_SECONDS}s"
-            ) from exc
-        except OSError as exc:
-            raise ModuleError(f"failed to start module {self.manifest.name!r}: {exc}") from exc
-
-        stderr_tail = proc.stderr.decode(errors="replace").strip()[-2000:]
-        if proc.returncode != 0:
-            raise ModuleError(
-                f"module {self.manifest.name!r} exited with {proc.returncode}: {stderr_tail}"
-            )
-        try:
-            response = json.loads(proc.stdout)
-        except ValueError as exc:
-            raise ModuleError(
-                f"module {self.manifest.name!r} returned invalid output: {stderr_tail}"
-            ) from exc
+            },
+            timeout=_RUN_TIMEOUT_SECONDS,
+            context=f"module {self.manifest.name!r}",
+        )
         if not response.get("ok"):
             raise ModuleError(f"module {self.manifest.name!r} failed: {response.get('error')}")
-
         return {
             port: ModuleResult(type=out["type"], data=base64.b64decode(out["data"]))
             for port, out in response["outputs"].items()
@@ -281,9 +337,11 @@ class ExtensionManager:
         return loaded
 
     def _register(self, manifest: ExtensionManifest, root: Path) -> InstalledExtension:
+        # One worker per extension, shared by all its modules (ADR 0015).
+        worker = ExtensionWorker(_venv_python(root / _VENV_DIR), manifest.name)
         for spec in manifest.modules:
             self._registry.register_isolated(
-                IsolatedModule(spec.manifest, spec.entry, root / _SRC_DIR, root / _VENV_DIR)
+                IsolatedModule(spec.manifest, spec.entry, root / _SRC_DIR, worker)
             )
         installed = InstalledExtension(manifest=manifest, root=root)
         self._installed[manifest.name] = installed

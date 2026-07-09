@@ -1,6 +1,8 @@
 # ADR 0012: Extensions install into per-extension venvs and run via a stdio runner
 
-- **Status:** Accepted
+- **Status:** Accepted (execution channel superseded by [ADR 0015](0015-persistent-extension-workers.md):
+  runner subprocesses are now persistent per-extension workers; format, install, and registry
+  decisions here remain in force)
 - **Date:** 2026-07-09
 
 ## Context

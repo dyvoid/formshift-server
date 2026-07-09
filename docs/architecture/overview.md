@@ -80,10 +80,10 @@ Client (HTTP)
   package's own environment; it is architecturally just an extension, not specially privileged in
   the engine, only in default packaging.
 - Everything else (out-of-core extensions) runs in its own venv and process: installed via
-  `POST /v1/extensions` into a per-extension venv, executed per-invocation through a stdio runner
-  the engine is otherwise blind to (ADRs 0012–0013). A persistent per-extension worker speaking
-  the HTTP contract is the designed end state; the runner is the current transport behind the
-  same adapter.
+  `POST /v1/extensions` into a per-extension venv, executed by a persistent per-extension worker
+  process over stdio, with imports and model state amortized across runs (ADRs 0012–0015). The
+  engine stays blind to what's inside; a worker speaking the full HTTP contract remains the
+  designed end state behind the same adapter.
 
 ## Constraints
 
