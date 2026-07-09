@@ -55,7 +55,12 @@ work is the follow-ups list below and whatever the Vector client surfaces — se
   (default `~/.u2net`); the test redirects them to a tmp dir.
 - Milestone tags: `m1` pushed; pushes of `m2`/`m3`/`m4` got persistent 403s from the session's
   git proxy (branch pushes work fine). Tags exist locally in the sandbox clone — recreate/push
-  them from a normal checkout: `m2` = 9145666, `m3` = 41388ac, `m4` = the M4 merge commit.
+  them from a normal checkout: `m2` = 9145666, `m3` = 41388ac, `m4` = f6cce1c.
+- Live CLI smoke re-verified after the worker change: server booted with `--extensions-dir`, an
+  extension installed over HTTP with curl and its module ran through the persistent worker.
+- Known sharp edge, deliberate for now: a corrupted extension directory (unparseable copied
+  manifest next to an `installed.json`) fails server startup loudly rather than being skipped.
+  Revisit if it ever bites.
 
 ## Next
 
@@ -64,9 +69,10 @@ M5 is gated on a non-Vector consumer; don't start it without one. Worthwhile non
 - Extension uninstall/upgrade endpoints once something needs them (ADR 0013).
 - Raw-buffer interchange for co-located modules (`raster/rgba8`) — roadmap candidate; profile a
   real client workload first (M1 baseline showed ~129 ms/node PNG codec cost at 3000×2250).
-- CI (GitHub Actions): repo is on GitHub now and the quality gate is scriptable
-  (`uv run pytest`, `ruff check .`, `mypy`, `mypy tests scripts`) — needs human review per
-  AGENTS.md before landing.
+- CI (GitHub Actions): **drafted and awaiting your review** on branch `task/ci-quality-gate`
+  (never merged — CI config needs human review per AGENTS.md). Full quality gate on
+  ubuntu + windows; review notes in the commit message. Merge it (fast-forward) if it looks right,
+  then enable branch protection per docs/git-strategy.md.
 
 ## Open questions
 
