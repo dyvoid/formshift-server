@@ -40,7 +40,9 @@ work is the follow-ups list below and whatever the Vector client surfaces — se
   (removebg now caches its ONNX session), crash/hang → ModuleError + respawn on next request,
   requests serialized per worker; ADR 0015. Verified: reuse, exception-survival, hard-crash
   respawn, concurrency tests, plus the gated conflict e2e re-run green over the worker path.
-- 108 tests pass without network; 2 more are gated behind `FORMSHIFT_TEST_NETWORK=1` (real PyPI
+- A post-session review pass fixed two manifest-validation edge cases (duplicate module names
+  half-registering; non-table modules entries returning 500 instead of 422).
+- 110 tests pass without network; 2 more are gated behind `FORMSHIFT_TEST_NETWORK=1` (real PyPI
   downloads). ruff + mypy strict clean (src, tests, scripts). ADRs 0002–0015.
 
 ## Session notes (2026-07-09, remote sandbox)
