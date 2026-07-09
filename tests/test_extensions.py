@@ -126,6 +126,27 @@ def test_parse_rejects_bad_entry(tmp_path: Path) -> None:
         parse_extension_manifest(source)
 
 
+def test_parse_rejects_duplicate_module_names(tmp_path: Path) -> None:
+    source = tmp_path / "dup"
+    source.mkdir()
+    duplicated = SHOUT_MANIFEST + SHOUT_MANIFEST[SHOUT_MANIFEST.index("[[modules]]") :]
+    (source / "extension.toml").write_text(duplicated, encoding="utf-8")
+    (source / "shout.py").write_text(SHOUT_CODE, encoding="utf-8")
+    with pytest.raises(ExtensionError, match="duplicate module name"):
+        parse_extension_manifest(source)
+
+
+def test_parse_rejects_non_table_modules(tmp_path: Path) -> None:
+    source = tmp_path / "non-table"
+    source.mkdir()
+    # Top-level `modules` must precede the [extension] table to stay top-level.
+    manifest = "modules = [1, 2]\n" + SHOUT_MANIFEST[: SHOUT_MANIFEST.index("[[modules]]")]
+    (source / "extension.toml").write_text(manifest, encoding="utf-8")
+    (source / "shout.py").write_text(SHOUT_CODE, encoding="utf-8")
+    with pytest.raises(ExtensionError, match=r"must be a \[\[modules\]\] table"):
+        parse_extension_manifest(source)
+
+
 def test_parse_rejects_unknown_isolation(tmp_path: Path) -> None:
     source = _manifest_variant(
         tmp_path, '[extension]', '[extension]\nisolation = "shared-gpu"'

@@ -120,11 +120,18 @@ def parse_extension_manifest(source: Path) -> ExtensionManifest:
     if not isinstance(raw_modules, list) or not raw_modules:
         raise ExtensionError(f"extension {name!r} declares no modules")
     modules = []
+    seen_names: set[str] = set()
     for raw in raw_modules:
+        if not isinstance(raw, dict):
+            raise ExtensionError(f"extension {name!r}: each module must be a [[modules]] table")
         module_name = str(raw.get("name", ""))
         entry = str(raw.get("entry", ""))
         if not module_name:
             raise ExtensionError(f"extension {name!r}: module without a name")
+        if module_name in seen_names:
+            # Caught at parse time so a bad manifest can never half-register.
+            raise ExtensionError(f"extension {name!r}: duplicate module name {module_name!r}")
+        seen_names.add(module_name)
         if not _ENTRY_RE.match(entry):
             raise ExtensionError(
                 f"extension {name!r} module {module_name!r}: entry must be "
