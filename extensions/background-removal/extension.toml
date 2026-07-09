@@ -1,0 +1,22 @@
+[extension]
+name = "background-removal"
+version = "0.1.0"
+description = "Salient-object background removal (rembg/U^2-Net), isolated from core"
+isolation = "isolated"
+# rembg's dependency set (onnxruntime, numpy>=2.3, scikit-image, scipy) is
+# exactly the ML-adjacent stack the isolation model exists for (design doc,
+# Extensions and dependency isolation; ADR 0012).
+requirements = ["rembg[cpu]==2.0.76"]
+
+[[modules]]
+name = "image.removebg"
+description = "Remove the background behind the salient object; RGBA PNG out"
+entry = "removebg:run"
+
+[[modules.inputs]]
+name = "image"
+type = "raster/png"
+
+[[modules.outputs]]
+name = "image"
+type = "raster/png"
