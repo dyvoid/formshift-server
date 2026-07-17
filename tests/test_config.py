@@ -49,3 +49,15 @@ def test_cli_generates_token_when_absent(monkeypatch: pytest.MonkeyPatch) -> Non
     config = _build_config([])
     assert config.token
     assert not config.token_explicit
+
+
+def test_cli_accepts_repeatable_cors_origins() -> None:
+    config = _build_config(
+        [
+            "--cors-origin",
+            "http://localhost:5173",
+            "--cors-origin",
+            "http://127.0.0.1:5173",
+        ]
+    )
+    assert config.cors_origins == ("http://localhost:5173", "http://127.0.0.1:5173")

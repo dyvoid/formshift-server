@@ -3,6 +3,11 @@
 import httpx
 import pytest
 
+from formshift_server.app import create_app
+from formshift_server.config import ServerConfig
+
+from .conftest import TEST_TOKEN
+
 pytestmark = pytest.mark.anyio
 
 
@@ -65,3 +70,45 @@ async def test_null_origin_is_403(client: httpx.AsyncClient) -> None:
 async def test_localhost_origin_passes(client: httpx.AsyncClient) -> None:
     response = await client.get("/health", headers={"Origin": "http://localhost:3000"})
     assert response.status_code == 200
+
+
+async def test_cors_headers_are_absent_by_default(anon_client: httpx.AsyncClient) -> None:
+    response = await anon_client.get("/health", headers={"Origin": "http://localhost:5173"})
+    assert response.status_code == 200
+    assert "Access-Control-Allow-Origin" not in response.headers
+
+
+async def test_configured_cors_origin_receives_response_header() -> None:
+    config = ServerConfig(
+        token=TEST_TOKEN,
+        token_explicit=True,
+        cors_origins=("http://localhost:5173",),
+    )
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
+        response = await client.get("/health", headers={"Origin": "http://localhost:5173"})
+
+    assert response.status_code == 200
+    assert response.headers["Access-Control-Allow-Origin"] == "http://localhost:5173"
+
+
+async def test_configured_cors_origin_can_preflight_authenticated_request() -> None:
+    config = ServerConfig(
+        token=TEST_TOKEN,
+        token_explicit=True,
+        cors_origins=("http://localhost:5173",),
+    )
+    transport = httpx.ASGITransport(app=create_app(config))
+    async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1") as client:
+        response = await client.options(
+            "/v1/sessions",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["Access-Control-Allow-Origin"] == "http://localhost:5173"
+    assert "authorization" in response.headers["Access-Control-Allow-Headers"].lower()

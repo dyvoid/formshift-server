@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from . import __version__
@@ -294,5 +295,13 @@ def create_app(config: ServerConfig, registry: ModuleRegistry | None = None) -> 
     app.state.cache = cache
     app.state.managers = managers
     app.state.extensions = extensions
+
+    if config.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(config.cors_origins),
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=["Authorization", "Content-Type"],
+        )
 
     return app
