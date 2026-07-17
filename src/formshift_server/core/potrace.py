@@ -22,6 +22,7 @@ from typing import Any
 from PIL import Image
 
 from ..modules import ModuleError, ModuleManifest, ModuleResult, PortSpec
+from .raster import _flatten
 
 _TIMEOUT_SECONDS = 300
 
@@ -46,10 +47,7 @@ def _png_to_pgm(png_bytes: bytes) -> bytes:
         # Composite transparency onto white before grayscaling: an alpha
         # channel dropped by a plain convert("L") would turn transparent
         # background into black and trace as solid ink.
-        if "A" in image.getbands():
-            background = Image.new("RGBA", image.size, (255, 255, 255, 255))
-            image = Image.alpha_composite(background, image.convert("RGBA"))
-        gray = image.convert("L")
+        gray = _flatten(image).convert("L")
     except Exception as exc:
         raise ModuleError(f"could not decode PNG input: {exc}") from exc
     buffer = io.BytesIO()

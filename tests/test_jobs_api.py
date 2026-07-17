@@ -125,6 +125,25 @@ async def test_invalid_graph_rejected_with_422_and_errors(fake_client: httpx.Asy
     assert any("unknown module" in e for e in response.json()["detail"])
 
 
+async def test_malformed_graph_rejected_with_422(fake_client: httpx.AsyncClient) -> None:
+    session_id, _ = await _session_with_payload(fake_client)
+    malformed: list[dict[str, Any]] = [
+        {"graph": {"nodes": [{"module": "test.upper"}]}},
+        {"graph": "not a graph"},
+        {"graph": {"nodes": [{"id": "a", "module": "test.upper", "params": "bad"}]}},
+        {"graph": {"nodes": [], "edges": ["bad"], "outputs": []}},
+    ]
+    for body in malformed:
+        response = await fake_client.post(f"/v1/sessions/{session_id}/jobs", json=body)
+        assert response.status_code == 422, body
+
+
+async def test_non_object_body_rejected_with_400(fake_client: httpx.AsyncClient) -> None:
+    session_id, _ = await _session_with_payload(fake_client)
+    response = await fake_client.post(f"/v1/sessions/{session_id}/jobs", json=[1, 2, 3])
+    assert response.status_code == 400
+
+
 async def test_unknown_job_404(fake_client: httpx.AsyncClient) -> None:
     session_id, _ = await _session_with_payload(fake_client)
     assert (await fake_client.get(f"/v1/sessions/{session_id}/jobs/nope")).status_code == 404

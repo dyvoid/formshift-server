@@ -67,6 +67,20 @@ def test_threshold_binarizes() -> None:
     assert decode(result["image"].data).getpixel((0, 0)) == 0
 
 
+def transparent_png(width: int = 20, height: int = 20) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGBA", (width, height), (0, 0, 0, 0)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_transparency_flattens_to_white_not_black() -> None:
+    data = transparent_png()
+    for module in (RotateModule(), LevelsModule(), ThresholdModule()):
+        result = module.run({"image": data}, {})
+        pixel = decode(result["image"].data).convert("L").getpixel((10, 10))
+        assert pixel == 255, type(module).__name__
+
+
 def test_downsample_is_identity_at_full_quality() -> None:
     data = png(1000, 800)
     result = DownsampleModule().run({"image": data}, {"max_dimension": 100}, draft=False)

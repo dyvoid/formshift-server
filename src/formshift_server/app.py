@@ -31,7 +31,7 @@ from .core import (
     ThresholdModule,
 )
 from .extensions import ExtensionConflictError, ExtensionError, ExtensionManager
-from .graph import parse_graph, validate_graph
+from .graph import GraphValidationError, parse_graph, validate_graph
 from .jobs import JobManager
 from .modules import ModuleRegistry
 from .sessions import Session, SessionStore
@@ -233,7 +233,12 @@ def create_app(config: ServerConfig, registry: ModuleRegistry | None = None) -> 
             body = await request.json()
         except Exception as exc:
             raise HTTPException(status_code=400, detail="Body must be JSON") from exc
-        graph = parse_graph(body.get("graph") or {})
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Body must be a JSON object")
+        try:
+            graph = parse_graph(body.get("graph") or {})
+        except GraphValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors) from exc
         draft = bool(body.get("draft", False))
         errors = validate_graph(graph, registry, session)
         if errors:

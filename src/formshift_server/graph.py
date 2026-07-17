@@ -101,7 +101,7 @@ def parse_graph(data: dict[str, Any]) -> Graph:
             OutputGroup(id=g["id"], order=str(g.get("order", "completion")))
             for g in data.get("groups", [])
         )
-    except (KeyError, TypeError) as exc:
+    except (AttributeError, KeyError, TypeError, ValueError) as exc:
         raise GraphValidationError([f"malformed graph: {exc!r}"]) from exc
     return Graph(nodes=nodes, edges=edges, bindings=bindings, outputs=outputs, groups=groups)
 
