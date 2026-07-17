@@ -19,7 +19,7 @@ from typing import Any
 from PIL import Image
 
 from ..modules import ModuleError, ModuleManifest, ModuleResult, PortSpec
-from .raster import RASTER_PNG, _decode, _encode, _int_param
+from .raster import RASTER_PNG, _decode, _encode, _flatten, _int_param
 
 VECTOR_SVG = "vector/svg"
 
@@ -45,7 +45,7 @@ class PosterizeModule:
         colors = _int_param(params, "colors", 8)
         if not 2 <= colors <= 256:
             raise ModuleError(f"colors must be in [2, 256], got {colors}")
-        image = _decode(inputs["image"]).convert("RGB")
+        image = _flatten(_decode(inputs["image"])).convert("RGB")
         quantized = image.quantize(colors=colors, method=Image.Quantize.MEDIANCUT)
         return {"image": _encode(quantized)}
 
@@ -114,7 +114,11 @@ class SvgColorizeModule:
         self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
     ) -> dict[str, ModuleResult]:
         fill = str(params.get("fill", "#000000"))
-        if not (fill.startswith("#") and len(fill) in (4, 7)):
+        if not (
+            fill.startswith("#")
+            and len(fill) in (4, 7)
+            and all(character in "0123456789abcdefABCDEF" for character in fill[1:])
+        ):
             raise ModuleError(f"fill must be a #rgb or #rrggbb hex color, got {fill!r}")
         root = _parse_svg(inputs["svg"], "input")
         for child in root:

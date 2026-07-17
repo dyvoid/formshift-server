@@ -23,6 +23,14 @@ def _decode(data: bytes) -> Image.Image:
         raise ModuleError(f"could not decode PNG input: {exc}") from exc
 
 
+def _flatten(image: Image.Image) -> Image.Image:
+    has_alpha = "A" in image.getbands() or (image.mode == "P" and "transparency" in image.info)
+    if not has_alpha:
+        return image
+    background = Image.new("RGBA", image.size, (255, 255, 255, 255))
+    return Image.alpha_composite(background, image.convert("RGBA"))
+
+
 def _encode(image: Image.Image) -> ModuleResult:
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
@@ -86,7 +94,7 @@ class RotateModule:
     def run(
         self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
     ) -> dict[str, ModuleResult]:
-        image = _decode(inputs["image"]).convert("RGB")
+        image = _flatten(_decode(inputs["image"])).convert("RGB")
         angle = _float_param(params, "angle", 0.0)
         rotated = image.rotate(angle, expand=True, fillcolor=(255, 255, 255))
         return {"image": _encode(rotated)}
@@ -102,7 +110,7 @@ class LevelsModule:
     def run(
         self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
     ) -> dict[str, ModuleResult]:
-        image = _decode(inputs["image"]).convert("RGB")
+        image = _flatten(_decode(inputs["image"])).convert("RGB")
         black = _int_param(params, "black", 0)
         white = _int_param(params, "white", 255)
         gamma = _float_param(params, "gamma", 1.0)
@@ -127,7 +135,7 @@ class ThresholdModule:
     def run(
         self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
     ) -> dict[str, ModuleResult]:
-        image = _decode(inputs["image"]).convert("L")
+        image = _flatten(_decode(inputs["image"])).convert("L")
         level = _int_param(params, "level", 128)
         if not 0 <= level <= 255:
             raise ModuleError(f"level must be in [0, 255], got {level}")

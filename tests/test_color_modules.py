@@ -87,8 +87,9 @@ def test_svg_colorize_sets_fill() -> None:
 
 
 def test_svg_colorize_validates_hex() -> None:
-    with pytest.raises(ModuleError, match="hex color"):
-        SvgColorizeModule().run({"svg": SIMPLE_SVG}, {"fill": "red"})
+    for fill in ("red", "#zzz", "#12345g", "#12345"):
+        with pytest.raises(ModuleError, match="hex color"):
+            SvgColorizeModule().run({"svg": SIMPLE_SVG}, {"fill": fill})
 
 
 def test_svg_merge_stacks_over_on_under() -> None:

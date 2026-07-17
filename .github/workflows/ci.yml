@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+
+      - name: Install potrace (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y potrace
+
+      - name: Install potrace (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $url = "https://potrace.sourceforge.net/download/1.16/potrace-1.16.win64.zip"
+          Invoke-WebRequest -Uri $url -OutFile potrace.zip
+          $actual = (Get-FileHash potrace.zip -Algorithm SHA1).Hash.ToLowerInvariant()
+          $expected = "7e360015c8ac0e6efdffa6c26974daf65ab596e9"
+          if ($actual -ne $expected) { throw "Potrace checksum mismatch: $actual" }
+          Expand-Archive potrace.zip -DestinationPath tools
+          "FORMSHIFT_POTRACE=$PWD\tools\potrace-1.16.win64\potrace.exe" |
+            Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Sync dependencies
+        run: uv sync --locked
+
+      - name: Tests
+        run: uv run pytest
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type-check
+        run: uv run mypy src tests scripts
+
+      - name: Build
+        run: uv build
