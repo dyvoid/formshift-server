@@ -280,7 +280,15 @@ domain extension, however "first-party" it might seem.
    extensions share an environment and which stay self-contained. The installer must resolve the
    combined dependency set of a proposed shared group before committing, catching conflicts at
    install time instead of runtime. An extension's manifest can force isolation, overriding any
-   grouping, for authors who know their dependency set is fragile.
+   grouping, for authors who know their dependency set is fragile. Core is architecturally just an
+   extension (tier 1's "in-process, shared env" is a packaging choice, not a structural privilege),
+   so a workspace group can include core: an extension that only needs PIL/numpy/scipy/scikit-image
+   can share core's environment rather than getting its own duplicate copy, and inherits in-process
+   dispatch (transport tier 1, zero-copy function calls) instead of base64-over-stdio. This is the
+   "stacked env" case — an extension's dependencies stack on top of core's, resolved at install
+   time, instead of every extension duplicating the classical CV stack. Tier 3 is designed but not
+   implemented; M3 shipped tier 2 only (every extension fully isolated by default), and the
+   duplicate-dependency cost is absorbed by every extension until tier 3 lands as M5 work.
 
 The isolation model responds to a documented, current failure mode, not a hypothetical. rembg has
 a live GitHub issue showing the NumPy 2.0 breaking-change error, and Arch Linux packagers
