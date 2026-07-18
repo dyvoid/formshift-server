@@ -404,3 +404,21 @@ matters first to real work.
 - No direct competitor was found for the server's combination (typed heterogeneous DAG with
   caching, permissively licensed and lightweight, out-of-process modules). Either a genuine gap or
   a sign nobody thought it worth building; worth staying honest about which.
+- **Core extension scope drift — decision made, implementation pending.** The design defines Core
+  as "one shared environment for the common classical CV stack (PIL, numpy, scipy, scikit-image)" —
+  see the Extensions and dependency isolation section. The shipped `core/` package violates this
+  definition: `potrace.trace` is a copyleft GPL-2.0 external binary invoked via subprocess
+  (aggregation, not linking — a licensing boundary, not a classical-CV operation), and `svg.merge`
+  / `svg.colorize` are Vector-shaped SVG operations, not classical CV. They live in core as a
+  build-sequence artifact (M0's exit condition required a tracer available by default, and core was
+  the only place to put one before isolated extensions existed), not as an architectural fit. This
+  was a direct contradiction of the project's agnostic-engine thesis: a non-Vector consumer wanting
+  `Crop`/`Rotate`/`Threshold` got the vectorizer and SVG helpers loaded into their default registry
+  whether they wanted them or not, with no knob to exclude them. `default_registry()` in `app.py`
+  hardcoded the full core set rather than exposing the "clients bundle and enable core by default
+  as a packaging choice" knob the design describes. **Decision recorded 2026-07-18 in
+  [ADR 0016](adr/0016-vector-modules-out-of-core.md) (Accepted):** `potrace.trace`, `svg.merge`,
+  and `svg.colorize` move out of core into a separate first-party extension; core becomes strictly
+  classical CV; `default_registry()` becomes configurable. The architectural decision is final; the
+  implementation is tracked as Planned in [ROADMAP](ROADMAP.md). This bullet remains until the
+  split lands in code.
