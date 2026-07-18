@@ -142,6 +142,18 @@ class ThresholdModule:
         return {"image": _encode(image.point(lambda v: 255 if v > level else 0))}
 
 
+class InvertModule:
+    """Invert every channel. Preserves geometry."""
+
+    manifest = _single_image_manifest("image.invert", "Invert colors (per-channel)")
+
+    def run(
+        self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
+    ) -> dict[str, ModuleResult]:
+        image = _flatten(_decode(inputs["image"])).convert("RGB")
+        return {"image": _encode(ImageOps.invert(image))}
+
+
 class DownsampleModule:
     """Draft-aware pipeline-boundary module (ADR 0008).
 

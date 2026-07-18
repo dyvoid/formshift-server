@@ -9,6 +9,7 @@ from .potrace import PotraceModule
 from .raster import (
     CropModule,
     DownsampleModule,
+    InvertModule,
     LevelsModule,
     RotateModule,
     ThresholdModule,
@@ -18,6 +19,7 @@ __all__ = [
     "ColorMaskModule",
     "CropModule",
     "DownsampleModule",
+    "InvertModule",
     "LevelsModule",
     "PosterizeModule",
     "PotraceModule",

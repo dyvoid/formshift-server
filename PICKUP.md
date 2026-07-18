@@ -42,8 +42,17 @@ work is the follow-ups list below and whatever the Vector client surfaces — se
   respawn, concurrency tests, plus the gated conflict e2e re-run green over the worker path.
 - A post-session review pass fixed two manifest-validation edge cases (duplicate module names
   half-registering; non-table modules entries returning 500 instead of 422).
-- 110 tests pass without network; 2 more are gated behind `FORMSHIFT_TEST_NETWORK=1` (real PyPI
+- 121 tests pass without network; 2 more are gated behind `FORMSHIFT_TEST_NETWORK=1` (real PyPI
   downloads). ruff + mypy strict clean (src, tests, scripts). ADRs 0002–0015.
+
+## Session notes (2026-07-18, local)
+
+- Added `image.invert` core module (`raster/png` → `raster/png`, no params) — per-channel
+  invert via `ImageOps.invert`, flattens alpha → RGB first like the other tonal modules.
+  New module behind an already-frozen contract; no ADR needed. Registered in
+  `default_registry()` between `image.threshold` and `image.downsample`. 4 new tests in
+  `tests/test_raster_modules.py`; full suite green (121 pass, 2 network-gated skip),
+  ruff + mypy clean. Committed directly to `main` with user sign-off per git-strategy.md.
 
 ## Session notes (2026-07-09, remote sandbox)
 
@@ -85,4 +94,4 @@ M5 is gated on a non-Vector consumer; don't start it without one. Worthwhile non
 - LAN token distribution / transport security still undesigned (flagged in design doc).
 
 ---
-*Last updated: 2026-07-09*
+*Last updated: 2026-07-18*

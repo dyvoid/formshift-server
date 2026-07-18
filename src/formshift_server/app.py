@@ -23,6 +23,7 @@ from .core import (
     ColorMaskModule,
     CropModule,
     DownsampleModule,
+    InvertModule,
     LevelsModule,
     PosterizeModule,
     PotraceModule,
@@ -50,6 +51,7 @@ def default_registry() -> ModuleRegistry:
     registry.register(RotateModule())
     registry.register(LevelsModule())
     registry.register(ThresholdModule())
+    registry.register(InvertModule())
     registry.register(DownsampleModule())
     registry.register(PosterizeModule())
     registry.register(ColorMaskModule())

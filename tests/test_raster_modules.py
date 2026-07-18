@@ -8,6 +8,7 @@ from PIL import Image
 from formshift_server.core.raster import (
     CropModule,
     DownsampleModule,
+    InvertModule,
     LevelsModule,
     RotateModule,
     ThresholdModule,
@@ -65,6 +66,30 @@ def test_threshold_binarizes() -> None:
     assert decode(result["image"].data).getpixel((0, 0)) == 255
     result = ThresholdModule().run({"image": png(color=(128, 128, 128))}, {"level": 200})
     assert decode(result["image"].data).getpixel((0, 0)) == 0
+
+
+def test_invert_flips_each_channel() -> None:
+    result = InvertModule().run({"image": png(color=(10, 20, 30))}, {})
+    assert decode(result["image"].data).getpixel((0, 0)) == (245, 235, 225)
+
+
+def test_invert_is_self_inverse() -> None:
+    data = png(color=(123, 200, 7))
+    once = InvertModule().run({"image": data}, {})["image"].data
+    twice = InvertModule().run({"image": once}, {})["image"].data
+    assert decode(twice).getpixel((0, 0)) == (123, 200, 7)
+
+
+def test_invert_preserves_geometry() -> None:
+    result = InvertModule().run({"image": png(100, 80)}, {})
+    assert decode(result["image"].data).size == (100, 80)
+
+
+def test_invert_flattens_transparency_before_inverting() -> None:
+    # Transparent must composite to white first, then invert to black —
+    # not drop alpha and read as already-black.
+    result = InvertModule().run({"image": transparent_png()}, {})
+    assert decode(result["image"].data).getpixel((10, 10)) == (0, 0, 0)
 
 
 def transparent_png(width: int = 20, height: int = 20) -> bytes:
