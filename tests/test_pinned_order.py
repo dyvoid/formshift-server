@@ -209,6 +209,14 @@ async def test_completion_group_streams_but_carries_group_id(
             [{"id": "g", "order": "pinned"}, {"id": "g", "order": "pinned"}],
             "duplicate output group",
         ),
+        (
+            [
+                {"node": "fast", "port": "text", "group": "a"},
+                {"node": "fast", "port": "text", "group": "b"},
+            ],
+            [{"id": "a", "order": "pinned"}, {"id": "b", "order": "pinned"}],
+            "duplicate output reference",
+        ),
     ],
 )
 async def test_group_validation_rejected_with_422(

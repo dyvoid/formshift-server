@@ -73,37 +73,98 @@ class GraphValidationError(Exception):
         self.errors = errors
 
 
+def _array(data: dict[str, Any], name: str) -> list[Any]:
+    value = data.get(name, [])
+    if not isinstance(value, list):
+        raise TypeError(f"{name!r} must be an array")
+    return value
+
+
+def _object(value: Any, location: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise TypeError(f"{location} must be an object")
+    return value
+
+
+def _string(data: dict[str, Any], name: str, location: str) -> str:
+    value = data[name]
+    if not isinstance(value, str):
+        raise TypeError(f"{location}.{name} must be a string")
+    return value
+
+
 def parse_graph(data: dict[str, Any]) -> Graph:
     """Parse the JSON wire format. Unknown fields are ignored (forward-only rule)."""
     try:
-        nodes = tuple(
-            Node(id=n["id"], module=n["module"], params=dict(n.get("params", {})))
-            for n in data.get("nodes", [])
-        )
-        edges = tuple(
-            Edge(
-                from_node=e["from_node"],
-                from_port=e["from_port"],
-                to_node=e["to_node"],
-                to_port=e["to_port"],
+        nodes: list[Node] = []
+        for index, value in enumerate(_array(data, "nodes")):
+            node = _object(value, f"nodes[{index}]")
+            params = node.get("params", {})
+            if not isinstance(params, dict):
+                raise TypeError(f"nodes[{index}].params must be an object")
+            nodes.append(
+                Node(
+                    id=_string(node, "id", f"nodes[{index}]"),
+                    module=_string(node, "module", f"nodes[{index}]"),
+                    params=dict(params),
+                )
             )
-            for e in data.get("edges", [])
-        )
-        bindings = tuple(
-            Binding(payload=b["payload"], node=b["node"], port=b["port"])
-            for b in data.get("bindings", [])
-        )
-        outputs = tuple(
-            OutputRef(node=o["node"], port=o["port"], group=o.get("group"))
-            for o in data.get("outputs", [])
-        )
-        groups = tuple(
-            OutputGroup(id=g["id"], order=str(g.get("order", "completion")))
-            for g in data.get("groups", [])
-        )
+
+        edges: list[Edge] = []
+        for index, value in enumerate(_array(data, "edges")):
+            edge = _object(value, f"edges[{index}]")
+            edges.append(
+                Edge(
+                    from_node=_string(edge, "from_node", f"edges[{index}]"),
+                    from_port=_string(edge, "from_port", f"edges[{index}]"),
+                    to_node=_string(edge, "to_node", f"edges[{index}]"),
+                    to_port=_string(edge, "to_port", f"edges[{index}]"),
+                )
+            )
+
+        bindings: list[Binding] = []
+        for index, value in enumerate(_array(data, "bindings")):
+            binding = _object(value, f"bindings[{index}]")
+            bindings.append(
+                Binding(
+                    payload=_string(binding, "payload", f"bindings[{index}]"),
+                    node=_string(binding, "node", f"bindings[{index}]"),
+                    port=_string(binding, "port", f"bindings[{index}]"),
+                )
+            )
+
+        outputs: list[OutputRef] = []
+        for index, value in enumerate(_array(data, "outputs")):
+            output = _object(value, f"outputs[{index}]")
+            group = output.get("group")
+            if group is not None and not isinstance(group, str):
+                raise TypeError(f"outputs[{index}].group must be a string or null")
+            outputs.append(
+                OutputRef(
+                    node=_string(output, "node", f"outputs[{index}]"),
+                    port=_string(output, "port", f"outputs[{index}]"),
+                    group=group,
+                )
+            )
+
+        groups: list[OutputGroup] = []
+        for index, value in enumerate(_array(data, "groups")):
+            group = _object(value, f"groups[{index}]")
+            order = group.get("order", "completion")
+            if not isinstance(order, str):
+                raise TypeError(f"groups[{index}].order must be a string")
+            groups.append(
+                OutputGroup(id=_string(group, "id", f"groups[{index}]"), order=order)
+            )
     except (AttributeError, KeyError, TypeError, ValueError) as exc:
         raise GraphValidationError([f"malformed graph: {exc!r}"]) from exc
-    return Graph(nodes=nodes, edges=edges, bindings=bindings, outputs=outputs, groups=groups)
+    return Graph(
+        nodes=tuple(nodes),
+        edges=tuple(edges),
+        bindings=tuple(bindings),
+        outputs=tuple(outputs),
+        groups=tuple(groups),
+    )
 
 
 def validate_graph(graph: Graph, registry: ModuleRegistry, session: Session) -> list[str]:
@@ -189,7 +250,12 @@ def validate_graph(graph: Graph, registry: ModuleRegistry, session: Session) -> 
                 f"(implemented: {sorted(OUTPUT_GROUP_ORDERS)})"
             )
 
+    output_refs: set[tuple[str, str]] = set()
     for out in graph.outputs:
+        key = (out.node, out.port)
+        if key in output_refs:
+            errors.append(f"duplicate output reference {out.node!r}:{out.port!r}")
+        output_refs.add(key)
         if output_type(out.node, out.port) is None:
             errors.append(f"output references unknown port {out.node!r}:{out.port!r}")
         if out.group is not None and out.group not in groups_by_id:

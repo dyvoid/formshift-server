@@ -98,6 +98,10 @@ class ModuleRegistry:
             raise ValueError(f"module {name!r} already registered")
         self._modules[name] = module
 
+    def unregister(self, name: str) -> None:
+        """Remove a module if present (rollback of a failed extension install)."""
+        self._modules.pop(name, None)
+
     def get(self, name: str) -> Module | None:
         return self._modules.get(name)
 

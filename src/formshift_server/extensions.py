@@ -292,12 +292,20 @@ class ExtensionManager:
         self._dir = extensions_dir
         self._registry = registry
         self._installed: dict[str, InstalledExtension] = {}
+        # Installs run off the event loop via asyncio.to_thread(); serialize
+        # the whole transaction so concurrent installs cannot both pass the
+        # collision preflight and race each other into the registry.
+        self._install_lock = threading.Lock()
 
     def installed(self) -> list[InstalledExtension]:
         return list(self._installed.values())
 
     def install(self, source: Path) -> InstalledExtension:
         """Install from a source directory: copy, venv, pip, register. Synchronous."""
+        with self._install_lock:
+            return self._install_locked(source)
+
+    def _install_locked(self, source: Path) -> InstalledExtension:
         source = source.expanduser().resolve()
         if not source.is_dir():
             raise ExtensionError(f"extension source {source} is not a directory")
@@ -323,13 +331,12 @@ class ExtensionManager:
             self._create_venv(manifest, root / _VENV_DIR)
             state = {"installed_with": sys.version, "manifest_source": "extension.toml"}
             (root / _STATE_FILE).write_text(json.dumps(state), encoding="utf-8")
-        except (ExtensionError, OSError) as exc:
+            return self._register(manifest, root)
+        except (ExtensionError, OSError, ValueError) as exc:
             shutil.rmtree(root, ignore_errors=True)  # no half-installed leftovers
             if isinstance(exc, ExtensionError):
                 raise
             raise ExtensionError(f"could not install {manifest.name!r}: {exc}") from exc
-
-        return self._register(manifest, root)
 
     def load_installed(self) -> list[InstalledExtension]:
         """Register every completely-installed extension under the extensions directory."""
@@ -346,10 +353,19 @@ class ExtensionManager:
     def _register(self, manifest: ExtensionManifest, root: Path) -> InstalledExtension:
         # One worker per extension, shared by all its modules (ADR 0015).
         worker = ExtensionWorker(_venv_python(root / _VENV_DIR), manifest.name)
-        for spec in manifest.modules:
-            self._registry.register_isolated(
-                IsolatedModule(spec.manifest, spec.entry, root / _SRC_DIR, worker)
-            )
+        registered: list[str] = []
+        try:
+            for spec in manifest.modules:
+                self._registry.register_isolated(
+                    IsolatedModule(spec.manifest, spec.entry, root / _SRC_DIR, worker)
+                )
+                registered.append(spec.manifest.name)
+        except Exception:
+            # Never leave a half-registered extension behind: modules from a
+            # failed registration would shadow the failure on later installs.
+            for name in registered:
+                self._registry.unregister(name)
+            raise
         installed = InstalledExtension(manifest=manifest, root=root)
         self._installed[manifest.name] = installed
         return installed

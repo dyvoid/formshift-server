@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from .cache import ResultCache, content_hash, recipe_key
 from .graph import Graph, GraphValidationError, topological_order, validate_graph
-from .modules import ModuleRegistry, ModuleResult
+from .modules import ModuleError, ModuleRegistry, ModuleResult
 from .sessions import Session
 
 
@@ -123,11 +123,29 @@ def execute_graph(
             was_cached = True
         else:
             results = module.run(inputs, node.params, draft=draft)
-            missing = {p.name for p in manifest.outputs} - results.keys()
+            # Enforce the manifest contract before anything reaches the cache:
+            # a violating result must never poison it (or downstream nodes).
+            declared = {p.name: p.type for p in manifest.outputs}
+            missing = declared.keys() - results.keys()
             if missing:
-                raise RuntimeError(
-                    f"module {manifest.name!r} did not produce declared outputs: {sorted(missing)}"
+                raise ModuleError(
+                    f"module {manifest.name!r} missing declared outputs: {sorted(missing)}"
                 )
+            extra = results.keys() - declared.keys()
+            if extra:
+                raise ModuleError(
+                    f"module {manifest.name!r} returned undeclared outputs: {sorted(extra)}"
+                )
+            for name, result in results.items():
+                if result.type != declared[name]:
+                    raise ModuleError(
+                        f"module {manifest.name!r} output {name!r} has wrong type "
+                        f"{result.type!r} (declared {declared[name]!r})"
+                    )
+            if cancel is not None and cancel.is_set():
+                # The job was cancelled while this node ran; drop the result so
+                # a deleted session leaves no trace in the shared cache.
+                raise ExecutionCancelled("cancelled at node boundary")
             cache.put(cache_key, results)
             was_cached = False
 

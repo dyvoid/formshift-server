@@ -7,7 +7,13 @@ import pytest
 from formshift_server.cache import ResultCache
 from formshift_server.executor import execute_graph
 from formshift_server.graph import GraphValidationError, parse_graph
-from formshift_server.modules import ModuleRegistry
+from formshift_server.modules import (
+    ModuleError,
+    ModuleManifest,
+    ModuleRegistry,
+    ModuleResult,
+    PortSpec,
+)
 from formshift_server.sessions import Session
 
 from .helpers import TEXT, ConcatModule, SuffixModule, UpperModule
@@ -132,6 +138,55 @@ def test_invalid_graph_raises_before_any_run() -> None:
     with pytest.raises(GraphValidationError):
         execute_graph(parse_graph(data), registry, session, cache)
     assert upper.runs == 0
+
+
+@pytest.mark.parametrize(
+    ("results", "error"),
+    [
+        ({}, "missing declared outputs"),
+        ({"text": ModuleResult(type="raster/png", data=b"bad")}, "wrong type"),
+        (
+            {
+                "text": ModuleResult(type=TEXT, data=b"ok"),
+                "extra": ModuleResult(type=TEXT, data=b"bad"),
+            },
+            "undeclared outputs",
+        ),
+    ],
+)
+def test_module_output_contract_is_enforced(
+    results: dict[str, ModuleResult], error: str
+) -> None:
+    class InvalidOutputModule:
+        manifest = ModuleManifest(
+            name="test.invalid-output",
+            version="1.0",
+            description="",
+            inputs=(PortSpec("text", TEXT),),
+            outputs=(PortSpec("text", TEXT),),
+        )
+
+        def run(
+            self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
+        ) -> dict[str, ModuleResult]:
+            return results
+
+    registry = ModuleRegistry()
+    registry.register(InvalidOutputModule())
+    session = Session(id="s")
+    payload = session.add_payload(TEXT, b"hello")
+    graph = parse_graph(
+        {
+            "nodes": [{"id": "bad", "module": "test.invalid-output"}],
+            "bindings": [{"payload": payload.id, "node": "bad", "port": "text"}],
+            "outputs": [{"node": "bad", "port": "text"}],
+        }
+    )
+    cache = ResultCache()
+
+    with pytest.raises(ModuleError, match=error):
+        execute_graph(graph, registry, session, cache)
+    assert len(cache) == 0
 
 
 def test_isolation_other_than_core_is_explicit_not_implemented() -> None:

@@ -1,6 +1,7 @@
 """Job endpoints and SSE event contract (ADR 0007), using fake modules."""
 
 import asyncio
+import threading
 from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
@@ -9,7 +10,7 @@ import pytest
 
 from formshift_server.app import create_app
 from formshift_server.config import ServerConfig
-from formshift_server.modules import ModuleRegistry
+from formshift_server.modules import ModuleManifest, ModuleRegistry, ModuleResult, PortSpec
 
 from .conftest import TEST_TOKEN
 from .helpers import TEXT, ConcatModule, SuffixModule, UpperModule
@@ -131,6 +132,8 @@ async def test_malformed_graph_rejected_with_422(fake_client: httpx.AsyncClient)
         {"graph": {"nodes": [{"module": "test.upper"}]}},
         {"graph": "not a graph"},
         {"graph": {"nodes": [{"id": "a", "module": "test.upper", "params": "bad"}]}},
+        {"graph": {"nodes": [{"id": [], "module": "test.upper"}]}},
+        {"graph": {"nodes": [{"id": "a", "module": []}]}},
         {"graph": {"nodes": [], "edges": ["bad"], "outputs": []}},
     ]
     for body in malformed:
@@ -159,6 +162,83 @@ async def test_cancel_is_idempotent_on_terminal_job(fake_client: httpx.AsyncClie
     await _wait_terminal(fake_client, session_id, job_id)
     response = await fake_client.delete(f"/v1/sessions/{session_id}/jobs/{job_id}")
     assert response.status_code == 204
+
+
+class BlockingModule:
+    manifest = ModuleManifest(
+        name="test.blocking",
+        version="1.0",
+        description="wait until released",
+        inputs=(PortSpec("text", TEXT),),
+        outputs=(PortSpec("text", TEXT),),
+    )
+
+    def __init__(self) -> None:
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def run(
+        self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
+    ) -> dict[str, ModuleResult]:
+        self.started.set()
+        if not self.release.wait(timeout=5):
+            raise RuntimeError("test did not release blocking module")
+        return {"text": ModuleResult(type=TEXT, data=inputs["text"])}
+
+
+async def test_delete_session_cancels_active_job(config: ServerConfig) -> None:
+    blocker = BlockingModule()
+    suffix = SuffixModule()
+    registry = ModuleRegistry()
+    registry.register(blocker)
+    registry.register(suffix)
+    app = create_app(config, registry=registry)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://127.0.0.1",
+        headers={"Authorization": f"Bearer {TEST_TOKEN}"},
+    ) as client:
+        session_id, payload_id = await _session_with_payload(client)
+        graph = {
+            "nodes": [
+                {"id": "block", "module": "test.blocking"},
+                {"id": "suffix", "module": "test.suffix", "params": {"suffix": "!"}},
+            ],
+            "edges": [
+                {
+                    "from_node": "block",
+                    "from_port": "text",
+                    "to_node": "suffix",
+                    "to_port": "text",
+                }
+            ],
+            "bindings": [{"payload": payload_id, "node": "block", "port": "text"}],
+            "outputs": [{"node": "suffix", "port": "text"}],
+        }
+        submit = await client.post(
+            f"/v1/sessions/{session_id}/jobs", json={"graph": graph}
+        )
+        job_id = submit.json()["id"]
+        manager = app.state.managers[session_id]
+        session = app.state.store.get(session_id)
+        assert session is not None
+        assert await asyncio.to_thread(blocker.started.wait, 2)
+
+        response = await client.delete(f"/v1/sessions/{session_id}")
+        assert response.status_code == 204
+        assert app.state.store.get(session_id) is None
+        assert session_id not in app.state.managers
+        blocker.release.set()
+
+        deadline = asyncio.get_event_loop().time() + 2
+        while manager.get(job_id).status.value != "cancelled":
+            assert asyncio.get_event_loop().time() < deadline
+            await asyncio.sleep(0.01)
+        assert manager.get(job_id).outputs == []
+        assert suffix.runs == 0
+        assert len(app.state.cache) == 0
+        assert list(session.payloads) == [payload_id]
 
 
 async def test_sse_stream_carries_job_lifecycle(live_server: str) -> None:

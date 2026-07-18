@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -233,6 +235,42 @@ def test_install_rejects_module_name_collision(tmp_path: Path, shout_source: Pat
     assert not (tmp_path / "extensions" / "shout").exists()  # nothing half-installed
 
 
+def test_concurrent_installs_reserve_module_names(tmp_path: Path, monkeypatch: Any) -> None:
+    first_parent = tmp_path / "first"
+    first_parent.mkdir()
+    first = write_shout_extension(first_parent)
+    second_parent = tmp_path / "second"
+    second_parent.mkdir()
+    second = write_shout_extension(second_parent)
+    manifest_path = second / "extension.toml"
+    manifest_path.write_text(
+        manifest_path.read_text(encoding="utf-8").replace('name = "shout"', 'name = "echo"', 1),
+        encoding="utf-8",
+    )
+    manager = ExtensionManager(tmp_path / "extensions", ModuleRegistry())
+
+    def create_slow_venv(manifest: Any, venv_dir: Path) -> None:
+        time.sleep(0.1)
+        venv_dir.mkdir(parents=True)
+
+    monkeypatch.setattr(manager, "_create_venv", create_slow_venv)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(manager.install, source) for source in (first, second)]
+    installed = []
+    conflicts = []
+    for future in futures:
+        try:
+            installed.append(future.result().manifest.name)
+        except ExtensionConflictError as exc:
+            conflicts.append(str(exc))
+
+    assert len(installed) == 1
+    assert len(conflicts) == 1
+    assert "already registered" in conflicts[0]
+    roots = [path.name for path in (tmp_path / "extensions").iterdir()]
+    assert roots == installed
+
+
 def test_load_installed_after_restart(tmp_path: Path, shout_source: Path) -> None:
     extensions_dir = tmp_path / "extensions"
     first = ExtensionManager(extensions_dir, ModuleRegistry())
@@ -407,6 +445,8 @@ async def test_install_invalid_source_over_http(tmp_path: Path) -> None:
         assert response.status_code == 422
         missing = await client.post("/v1/extensions", json={})
         assert missing.status_code == 400
+        non_object = await client.post("/v1/extensions", json=[])
+        assert non_object.status_code == 400
 
 
 async def _wait_for_job(

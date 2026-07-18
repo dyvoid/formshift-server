@@ -107,6 +107,18 @@ class JobManager:
         job.cancel.set()
         return True
 
+    def shutdown(self) -> None:
+        """Cancel every nonterminal job (session deletion, ADR 0004).
+
+        Worker threads observe the cancel at their next node boundary and
+        discard in-flight results, so nothing owned by the session outlives it.
+        """
+        with self._lock:
+            jobs = list(self._jobs.values())
+        for job in jobs:
+            if job.status not in TERMINAL:
+                job.cancel.set()
+
     def submit(self, graph: Graph, draft: bool) -> Job:
         """Create a job and start it on a worker thread. Graph is pre-validated."""
         job = Job(id=secrets.token_urlsafe(16))

@@ -141,7 +141,9 @@ def create_app(config: ServerConfig, registry: ModuleRegistry | None = None) -> 
     def delete_session(session_id: str) -> None:
         if not store.delete(session_id):
             raise HTTPException(status_code=404, detail="Session not found")
-        managers.pop(session_id, None)
+        manager = managers.pop(session_id, None)
+        if manager is not None:
+            manager.shutdown()
 
     @app.post("/v1/sessions/{session_id}/payloads", status_code=201)
     async def upload_payload(
@@ -213,6 +215,8 @@ def create_app(config: ServerConfig, registry: ModuleRegistry | None = None) -> 
             body = await request.json()
         except Exception as exc:
             raise HTTPException(status_code=400, detail="Body must be JSON") from exc
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Body must be a JSON object")
         path = body.get("path")
         if not isinstance(path, str) or not path:
             raise HTTPException(status_code=400, detail="'path' (extension source dir) required")
