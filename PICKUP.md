@@ -53,6 +53,23 @@ work is the follow-ups list below and whatever the Vector client surfaces — se
   `default_registry()` between `image.threshold` and `image.downsample`. 4 new tests in
   `tests/test_raster_modules.py`; full suite green (121 pass, 2 network-gated skip),
   ruff + mypy clean. Committed directly to `main` with user sign-off per git-strategy.md.
+- PICKUP.md staleness corrected: the "Next" section previously listed CI as drafted on
+  `task/ci-quality-gate` awaiting review, and tags `m2`/`m3`/`m4` as needing recreation.
+  Both were stale — CI is merged on `main` (commit `aa1ad91`, `.github/workflows/ci.yml`,
+  ubuntu + windows matrix, tests + ruff + mypy + build, action SHAs pinned, potrace
+  download checksummed), and all four milestone tags exist locally. The branch
+  `task/ci-quality-gate` no longer exists. Updated "Next" and "Open questions" to match.
+- Architecture comparison vs ComfyUI's backend (DAG + per-node cache + progressive
+  streaming) done in conversation. Conclusion recorded for future sessions: on the shared
+  axis ComfyUI's backend is more mature (cache strategies, real queue, intra-node progress,
+  real-workload hardening); on isolation, heterogeneous I/O, security, and contract
+  discipline this engine is structurally ahead. Recommendation: do **not** add
+  ComfyUI-parity items to the roadmap speculatively — the missing ones are either already
+  tracked (eviction on M5, scheduler as a known open risk) or solve workloads this engine
+  doesn't have (intra-node progress, hierarchical subcaches). The one actionable addition
+  is a non-Vector reference extension, now logged as a Candidate in
+  [docs/ROADMAP.md](docs/ROADMAP.md) — the cheapest way to falsify the agnostic-engine
+  claim without waiting for a real second consumer.
 
 ## Session notes (2026-07-09, remote sandbox)
 
@@ -80,18 +97,14 @@ M5 is gated on a non-Vector consumer; don't start it without one. Worthwhile non
 - Extension uninstall/upgrade endpoints once something needs them (ADR 0013).
 - Raw-buffer interchange for co-located modules (`raster/rgba8`) — roadmap candidate; profile a
   real client workload first (M1 baseline showed ~129 ms/node PNG codec cost at 3000×2250).
-- CI (GitHub Actions): **drafted and awaiting your review** on branch `task/ci-quality-gate`
-  (never merged — CI config needs human review per AGENTS.md). Full quality gate on
-  ubuntu + windows; review notes in the commit message. Merge it (fast-forward) if it looks right,
-  then enable branch protection per docs/git-strategy.md.
 
 ## Open questions
 
-- CI (GitHub Actions) still unconfigured; quality gate runs locally. The repo now lives on GitHub
-  (`dyvoid/formshift-server`, `main` pushed 2026-07-09), so CI is actionable whenever the user
-  wants it — needs human review per AGENTS.md.
 - Cache memory budget / eviction policy still unresolved (flagged for M5).
 - LAN token distribution / transport security still undesigned (flagged in design doc).
+- Milestone tags `m0`–`m4` exist locally; remote push state unverified from this machine (SSH key
+  not available for `git ls-remote`). If any are missing on `origin`, push them from a checkout
+  that has push access.
 
 ---
-*Last updated: 2026-07-18*
+*Last updated: 2026-07-18 (PICKUP staleness corrected same day)*
