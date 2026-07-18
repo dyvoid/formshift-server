@@ -29,14 +29,24 @@ code makes no such choice available.
 
 ## Decision
 
-`potrace.trace`, `svg.merge`, and `svg.colorize` move out of `core/` into a separate first-party
-extension maintained in this repo. Core becomes strictly the classical CV stack: raster operations
-on `raster/png` using PIL/numpy/scipy/scikit-image. Nothing vector-specific, nothing copyleft,
+`potrace.trace`, `svg.merge`, and `svg.colorize` move out of `core/` into a separate extension
+that lives in its **own git repository**, independent of both this server repo and any client
+(Vector or otherwise). Core becomes strictly the classical CV stack: raster operations on
+`raster/png` using PIL/numpy/scipy/scikit-image. Nothing vector-specific, nothing copyleft,
 nothing subprocess-shelled-out remains in core.
 
-`default_registry()` in `app.py` becomes configurable so clients choose which first-party
-extensions to enable. The default bundling remains a packaging choice the design describes, not a
-structural privilege baked into the engine.
+The extension is not in-tree. It is independently owned, versioned, and installable through the
+existing extension install path (ADR 0013). Someone who wants SVG tracing without knowing either
+this server project or Vector exists can find, install, and use it on its own merits — potrace is
+a generic tracer used by Inkscape, CNC software, and font tooling, not a Vector concept.
+
+`default_registry()` in `app.py` becomes configurable so clients choose which extensions to
+enable. The default bundling remains a packaging choice the design describes, not a structural
+privilege baked into the engine.
+
+The general principle — domain extensions live in their own repos, not in-tree — is recorded
+separately in [ADR 0017](0017-extensions-live-in-own-repos.md). This ADR covers the specific
+move of the vector modules; ADR 0017 covers the rule that applies to all extensions.
 
 The architectural decision is final and unambiguous. Implementation timing follows the build
 strategy — the split lands when work on it begins, not gated on a future consumer — but the
@@ -62,10 +72,10 @@ vector modules there must understand that as deliberate, not as "nobody's gotten
   placement at the time. That condition is historical, not a forward constraint — the tracer being
   available by default was a Vector-bundling choice, which under this ADR becomes exactly the kind
   of packaging choice the design describes, made by the client that needs it.
-- The new extension is first-party (maintained in this repo, shipped alongside the server) but
-  architecturally just another extension. Nothing in the engine special-cases it. This is the same
-  status `core/` already has per its own module docstring: "Architecturally just an extension like
-  any other, nothing in the engine special-cases it."
+- The new extension lives in its own repo (per ADR 0017) and is architecturally just another
+  extension. Nothing in the engine special-cases it. This is the same status `core/` already has
+  per its own module docstring: "Architecturally just an extension like any other, nothing in the
+  engine special-cases it."
 - The Open risks bullet "Core extension scope drift" in
   [Design](../architecture/design.md) is resolved as a decision; the implementation remains as
   work-to-be-done under this ADR.

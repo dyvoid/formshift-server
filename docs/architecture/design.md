@@ -258,15 +258,24 @@ decided per output group, not one implementation assumed to generalize.
 The server ships with nothing installed. Modules are grouped into extensions (an installable
 package bundling related modules), and extensions declare their own dependencies.
 
+**Domain extensions live in their own repositories, not in-tree** (ADR 0017). The server repo
+ships the engine and core; domain extensions (SVG tracing, background removal, anything future)
+are independently owned, versioned, and installed through the extension API. This is the
+ComfyUI-custom-nodes model, applied deliberately — with the difference that this project's
+extensions also get per-extension venv isolation (ADR 0012), which ComfyUI's don't. Core is the
+one structural exception: it lives in-tree because it shares the server's own environment and is
+bundled by clients as a packaging choice. That exception is narrow and does not extend to any
+domain extension, however "first-party" it might seem.
+
 **Isolation model, three tiers:**
 
 1. **Core**: one shared environment for the common classical CV stack (PIL, numpy, scipy,
    scikit-image). Architecturally just an extension like any other, with no special-cased path in
    the engine; clients typically bundle and enable it by default as a packaging choice, which is a
-   different fact from being structurally privileged.
+   different fact from being structurally privileged. Lives in-tree (the narrow exception above).
 2. **Everything else defaults to its own isolated venv**, running as its own process with its own
    dependencies and model weights, spun up on demand, speaking the same HTTP contract. The engine
-   is blind to what's inside.
+   is blind to what's inside. Lives in its own repo (ADR 0017).
 3. **Workspace-level grouping**: a client app can define a workspace config declaring which
    extensions share an environment and which stay self-contained. The installer must resolve the
    combined dependency set of a proposed shared group before committing, catching conflicts at
@@ -406,10 +415,10 @@ matters first to real work.
   a sign nobody thought it worth building; worth staying honest about which.
 - **Core extension scope drift — decision made, implementation pending.** The design defines Core
   as "one shared environment for the common classical CV stack (PIL, numpy, scipy, scikit-image)" —
-  see the Extensions and dependency isolation section. The shipped `core/` package violates this
+  see the Extensions and dependency isolation section. The shipped `core/` package violated this
   definition: `potrace.trace` is a copyleft GPL-2.0 external binary invoked via subprocess
   (aggregation, not linking — a licensing boundary, not a classical-CV operation), and `svg.merge`
-  / `svg.colorize` are Vector-shaped SVG operations, not classical CV. They live in core as a
+  / `svg.colorize` are Vector-shaped SVG operations, not classical CV. They lived in core as a
   build-sequence artifact (M0's exit condition required a tracer available by default, and core was
   the only place to put one before isolated extensions existed), not as an architectural fit. This
   was a direct contradiction of the project's agnostic-engine thesis: a non-Vector consumer wanting
@@ -418,7 +427,10 @@ matters first to real work.
   hardcoded the full core set rather than exposing the "clients bundle and enable core by default
   as a packaging choice" knob the design describes. **Decision recorded 2026-07-18 in
   [ADR 0016](adr/0016-vector-modules-out-of-core.md) (Accepted):** `potrace.trace`, `svg.merge`,
-  and `svg.colorize` move out of core into a separate first-party extension; core becomes strictly
-  classical CV; `default_registry()` becomes configurable. The architectural decision is final; the
+  and `svg.colorize` move out of core into a separate extension in its own repo; core becomes
+  strictly classical CV; `default_registry()` becomes configurable. The broader principle — domain
+  extensions live in their own repos, not in-tree — is recorded in
+  [ADR 0017](adr/0017-extensions-live-in-own-repos.md) (Accepted), which also covers moving the
+  existing in-tree `extensions/background-removal/` out. The architectural decisions are final; the
   implementation is tracked as Planned in [ROADMAP](ROADMAP.md). This bullet remains until the
   split lands in code.
