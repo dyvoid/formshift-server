@@ -104,3 +104,96 @@ def test_svg_merge_stacks_over_on_under() -> None:
 def test_svg_merge_rejects_garbage() -> None:
     with pytest.raises(ModuleError, match="parse"):
         SvgMergeModule().run({"under": b"not svg", "over": SIMPLE_SVG}, {})
+
+
+# --- explicit palette (ADR 0020) ---
+
+
+def rare_color_png(size: int = 40) -> bytes:
+    """Mostly red, with a 2x2 green patch median-cut would absorb."""
+    image = Image.new("RGB", (size, size), (255, 0, 0))
+    for x in range(2):
+        for y in range(2):
+            image.putpixel((x, y), (0, 200, 0))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def test_palette_preserves_rare_color_and_plte_order() -> None:
+    result = PosterizeModule().run(
+        {"image": rare_color_png()}, {"palette": ["#ff0000", "#00c800"]}
+    )
+    image = Image.open(io.BytesIO(result["image"].data))
+    assert image.mode == "P"
+    palette = image.getpalette()
+    assert palette is not None
+    assert palette[:6] == [255, 0, 0, 0, 200, 0]  # PLTE in supplied order
+    histogram = image.histogram()
+    assert histogram[1] == 4  # the 2x2 green patch survived, at index 1
+    assert histogram[0] == 40 * 40 - 4
+
+
+def test_palette_maps_pixels_to_nearest_entry() -> None:
+    image = Image.new("RGB", (4, 4), (250, 10, 10))  # near-red, not exact
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    result = PosterizeModule().run(
+        {"image": buffer.getvalue()}, {"palette": ["#0000ff", "#ff0000"]}
+    )
+    output = Image.open(io.BytesIO(result["image"].data))
+    assert output.histogram()[1] == 16  # everything lands on the red entry
+
+
+def test_palette_and_colors_are_mutually_exclusive() -> None:
+    with pytest.raises(ModuleError, match="mutually exclusive"):
+        PosterizeModule().run(
+            {"image": four_color_png()}, {"palette": ["#ff0000", "#00ff00"], "colors": 4}
+        )
+
+
+def test_palette_validates_entries() -> None:
+    for palette in (
+        ["#ff0000"],  # too short
+        ["#ff0000", "red"],  # not hex
+        ["#ff0000", "#f00"],  # #rgb shorthand rejected
+        ["#ff0000", "#ff0000"],  # duplicate
+        "#ff0000",  # not a list
+    ):
+        with pytest.raises(ModuleError, match="palette"):
+            PosterizeModule().run({"image": four_color_png()}, {"palette": palette})
+
+
+# --- colormask grow (ADR 0021) ---
+
+
+def test_grow_dilates_mask_and_overlaps_neighbor() -> None:
+    posterized = PosterizeModule().run({"image": four_color_png()}, {"colors": 4})["image"].data
+    grown_black = []
+    for index in range(4):
+        mask_bytes = (
+            ColorMaskModule().run({"image": posterized}, {"index": index, "grow": 2})["mask"].data
+        )
+        mask = Image.open(io.BytesIO(mask_bytes))
+        assert mask.mode == "L"
+        histogram = mask.histogram()
+        assert histogram[0] + histogram[255] == 40 * 40  # still strictly binary
+        grown_black.append(histogram[0])
+    # each quadrant grew from 20x20 to (20+2)x(20+2), clipped at the canvas corner
+    assert all(black == 22 * 22 for black in grown_black)
+    # grown masks are no longer disjoint: they overlap at the seams
+    assert sum(grown_black) > 40 * 40
+
+
+def test_grow_zero_and_absent_match_existing_behavior() -> None:
+    posterized = PosterizeModule().run({"image": four_color_png()}, {"colors": 4})["image"].data
+    absent = ColorMaskModule().run({"image": posterized}, {"index": 0})["mask"].data
+    zero = ColorMaskModule().run({"image": posterized}, {"index": 0, "grow": 0})["mask"].data
+    assert absent == zero
+
+
+def test_grow_rejects_negative_and_non_integer() -> None:
+    posterized = PosterizeModule().run({"image": four_color_png()}, {"colors": 4})["image"].data
+    for grow in (-1, 1.5, "2", True):
+        with pytest.raises(ModuleError, match="grow"):
+            ColorMaskModule().run({"image": posterized}, {"index": 0, "grow": grow})

@@ -16,7 +16,9 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from typing import Any
 
-from PIL import Image
+import numpy as np
+from PIL import Image, ImageFilter
+from skimage.color import rgb2lab
 
 from ..modules import ModuleError, ModuleManifest, ModuleResult, PortSpec
 from .raster import RASTER_PNG, _decode, _encode, _flatten, _int_param
@@ -26,10 +28,36 @@ VECTOR_SVG = "vector/svg"
 _SVG_NS = "http://www.w3.org/2000/svg"
 
 
+def _validate_palette(raw: Any) -> list[tuple[int, int, int]]:
+    """Validate an explicit palette (ADR 0020): 2-256 unique #rrggbb strings."""
+    if not isinstance(raw, list):
+        raise ModuleError(f"palette must be a list of #rrggbb strings, got {type(raw).__name__}")
+    if not 2 <= len(raw) <= 256:
+        raise ModuleError(f"palette length must be in [2, 256], got {len(raw)}")
+    entries: list[tuple[int, int, int]] = []
+    for position, entry in enumerate(raw):
+        if not (
+            isinstance(entry, str)
+            and entry.startswith("#")
+            and len(entry) == 7
+            and all(character in "0123456789abcdefABCDEF" for character in entry[1:])
+        ):
+            raise ModuleError(f"palette[{position}] must be a #rrggbb hex color, got {entry!r}")
+        rgb = (int(entry[1:3], 16), int(entry[3:5], 16), int(entry[5:7], 16))
+        if rgb in entries:
+            raise ModuleError(f"palette[{position}] duplicates an earlier entry: {entry!r}")
+        entries.append(rgb)
+    return entries
+
+
 class PosterizeModule:
     """Quantize to N flat colors. Output is a palette-mode PNG; the palette
     (index -> RGB) is readable by any PNG decoder, which is how clients and
-    the colormask module learn the color of each index."""
+    the colormask module learn the color of each index.
+
+    Two mutually exclusive modes (ADR 0020): `colors` (median-cut, the
+    default) or an explicit `palette` — nearest entry by CIELAB distance,
+    PLTE in the supplied order, ties to the lowest index."""
 
     manifest = ModuleManifest(
         name="image.posterize",
@@ -42,17 +70,41 @@ class PosterizeModule:
     def run(
         self, inputs: dict[str, bytes], params: dict[str, Any], *, draft: bool = False
     ) -> dict[str, ModuleResult]:
+        if "palette" in params and "colors" in params:
+            raise ModuleError("palette and colors are mutually exclusive; give one, not both")
+        image = _flatten(_decode(inputs["image"])).convert("RGB")
+        if "palette" in params:
+            palette = _validate_palette(params["palette"])
+            return {"image": _encode(_map_to_palette(image, palette))}
         colors = _int_param(params, "colors", 8)
         if not 2 <= colors <= 256:
             raise ModuleError(f"colors must be in [2, 256], got {colors}")
-        image = _flatten(_decode(inputs["image"])).convert("RGB")
         quantized = image.quantize(colors=colors, method=Image.Quantize.MEDIANCUT)
         return {"image": _encode(quantized)}
 
 
+def _map_to_palette(image: Image.Image, palette: list[tuple[int, int, int]]) -> Image.Image:
+    """Map each pixel to the nearest palette entry in CIELAB (ADR 0020).
+
+    np.argmin's first-occurrence rule is the deterministic lowest-index
+    tie-break the contract requires.
+    """
+    pixels = np.asarray(image, dtype=np.float64) / 255.0
+    pixels_lab = rgb2lab(pixels).reshape(-1, 1, 3)
+    palette_lab = rgb2lab(np.asarray(palette, dtype=np.float64).reshape(1, -1, 3) / 255.0)
+    distances = np.square(pixels_lab - palette_lab).sum(axis=2)
+    indices = distances.argmin(axis=1).astype(np.uint8).reshape(image.height, image.width)
+    output = Image.fromarray(indices, mode="P")
+    output.putpalette([channel for entry in palette for channel in entry])
+    return output
+
+
 class ColorMaskModule:
     """Extract one palette index from a posterized image as a binary mask
-    (index pixels black, everything else white — ready for tracing)."""
+    (index pixels black, everything else white — ready for tracing).
+
+    Optional `grow` (ADR 0021) dilates the black region by N pixels so
+    adjacent traces overlap at their shared boundary (trapping)."""
 
     manifest = ModuleManifest(
         name="image.colormask",
@@ -83,6 +135,14 @@ class ColorMaskModule:
         lut = [255] * 256
         lut[index] = 0
         mask = image.point(lut, mode="L")
+        grow = params.get("grow", 0)
+        if isinstance(grow, bool) or not isinstance(grow, int) or grow < 0:
+            raise ModuleError(f"grow must be a non-negative integer, got {grow!r}")
+        if grow > 0:
+            # MinFilter spreads the black (selected) region: a square
+            # structuring element of radius `grow`, deterministic per
+            # module_version (ADR 0021).
+            mask = mask.filter(ImageFilter.MinFilter(2 * grow + 1))
         return {"mask": ModuleResult(type=RASTER_PNG, data=_encode(mask).data)}
 
 

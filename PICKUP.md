@@ -45,6 +45,20 @@ work is the follow-ups list below and whatever the Vector client surfaces — se
 - 121 tests pass without network; 2 more are gated behind `FORMSHIFT_TEST_NETWORK=1` (real PyPI
   downloads). ruff + mypy strict clean (src, tests, scripts). ADRs 0002–0015.
 
+## Session notes (2026-07-19, local)
+
+- Implemented ADR 0020 (explicit-palette posterize) and ADR 0021 (colormask grow / trapping) on
+  `task/palette-posterize-colormask-grow`. `image.posterize` gains `palette` (nearest-entry
+  mapping in CIELAB via `skimage.color.rgb2lab`, PLTE in supplied order, argmin lowest-index
+  tie-break); `image.colormask` gains `grow` (pure-PIL `ImageFilter.MinFilter(2*grow+1)` dilation,
+  strict non-negative-int validation). 13 new tests in `tests/test_color_modules.py`; full suite
+  green (134 pass, 2 network-gated skip), ruff + mypy strict clean.
+- **Dependency change (user-approved this session): numpy, scipy, scikit-image added to core's
+  `pyproject.toml`**, completing the design-doc definition of core ("the common classical CV
+  stack"). Rationale: ADR 0020 needs Lab; the stack was always core-tier by definition and was
+  going to land anyway; user chose wiring the sanctioned libraries over hand-rolling colorimetry.
+  Both roadmap entries moved to Done; ADR 0021's "not yet wired" parenthetical updated.
+
 ## Session notes (2026-07-18, local)
 
 - Added `image.invert` core module (`raster/png` → `raster/png`, no params) — per-channel
@@ -107,4 +121,4 @@ M5 is gated on a non-Vector consumer; don't start it without one. Worthwhile non
   that has push access.
 
 ---
-*Last updated: 2026-07-18 (PICKUP staleness corrected same day)*
+*Last updated: 2026-07-19 (ADR 0020/0021 implemented, core CV stack wired in)*

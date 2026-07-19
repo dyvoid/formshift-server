@@ -83,6 +83,7 @@ boundary-aware tracing is a separate decision with its own ADR if it lands.
 - The dilation is O(width × height × grow²) in the naive form (or O(width × height × grow) with a
   separable implementation); for interactive use at typical `grow` values (1–4 px) this is
   negligible. PIL's `ImageFilter.MinFilter` (square) or `ImageFilter.MaxFilter` applied to the
-  inverted mask gives a pure-PIL implementation with no new core dependency — consistent with
-  core's current dependency profile (PIL only; numpy/scipy/scikit-image are in the design-doc
-  definition of core but not yet wired into `pyproject.toml`).
+  inverted mask gives a pure-PIL implementation with no new core dependency. (When this ADR was written, core's
+  installed profile was PIL only; numpy/scipy/scikit-image were wired into `pyproject.toml` on
+  2026-07-19 alongside ADR 0020's implementation, completing the design-doc core definition. The
+  pure-PIL choice here stands regardless.)
