@@ -104,7 +104,10 @@ class ColorMaskModule:
     (index pixels black, everything else white — ready for tracing).
 
     Optional `grow` (ADR 0021) dilates the black region by N pixels so
-    adjacent traces overlap at their shared boundary (trapping)."""
+    adjacent traces overlap at their shared boundary (trapping).
+
+    An index in [0, 256) that no pixel uses yields an all-white (empty)
+    mask rather than an error (ADR 0022)."""
 
     manifest = ModuleManifest(
         name="image.colormask",
@@ -123,13 +126,11 @@ class ColorMaskModule:
             raise ModuleError(
                 "colormask needs a palette-mode image (the output of image.posterize)"
             )
-        used_indices = {value for _, value in image.getcolors(maxcolors=256) or []}
         if not 0 <= index < 256:
             raise ModuleError(f"index must be in [0, 256), got {index}")
-        if index not in used_indices:
-            raise ModuleError(
-                f"index {index} not present in image (used indices: {sorted(used_indices)})"
-            )
+        # An in-range index no pixel maps to is an empty selection, not an
+        # error: an explicit palette (ADR 0020) may carry unused entries, and
+        # the LUT below yields an all-white "nothing selected" mask (ADR 0022).
         # point() with an explicit target mode maps raw palette indices through
         # the LUT, sidestepping palette color interpretation entirely.
         lut = [255] * 256

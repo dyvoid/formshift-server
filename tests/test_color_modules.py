@@ -75,10 +75,34 @@ def test_colormask_rejects_non_palette_input() -> None:
         ColorMaskModule().run({"image": four_color_png()}, {"index": 0})
 
 
-def test_colormask_rejects_unused_index() -> None:
+def test_colormask_rejects_out_of_range_index() -> None:
     posterized = PosterizeModule().run({"image": four_color_png()}, {"colors": 4})["image"].data
-    with pytest.raises(ModuleError, match="not present"):
-        ColorMaskModule().run({"image": posterized}, {"index": 200})
+    for index in (-1, 256):
+        with pytest.raises(ModuleError, match=r"\[0, 256\)"):
+            ColorMaskModule().run({"image": posterized}, {"index": index})
+
+
+def _unused_index_posterized() -> bytes:
+    """Posterize with an explicit palette whose last entry no pixel maps to."""
+    # The image's four colors are exact entries, so the fifth maps to nothing.
+    palette = ["#ff0000", "#00ff00", "#0000ff", "#ffffff", "#800080"]
+    return PosterizeModule().run({"image": four_color_png()}, {"palette": palette})["image"].data
+
+
+def test_colormask_unused_index_yields_empty_mask() -> None:
+    """ADR 0022: an in-range but unused palette index selects nothing."""
+    posterized = _unused_index_posterized()
+    assert 4 not in {value for _, value in Image.open(io.BytesIO(posterized)).getcolors(256) or []}
+    mask_bytes = ColorMaskModule().run({"image": posterized}, {"index": 4})["mask"].data
+    mask = Image.open(io.BytesIO(mask_bytes))
+    assert mask.mode == "L"
+    assert mask.histogram()[255] == 40 * 40  # all white: nothing selected
+
+
+def test_colormask_grow_on_unused_index_stays_empty() -> None:
+    posterized = _unused_index_posterized()
+    mask_bytes = ColorMaskModule().run({"image": posterized}, {"index": 4, "grow": 2})["mask"].data
+    assert Image.open(io.BytesIO(mask_bytes)).histogram()[255] == 40 * 40
 
 
 def test_svg_colorize_sets_fill() -> None:

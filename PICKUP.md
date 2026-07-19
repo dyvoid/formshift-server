@@ -58,6 +58,17 @@ work is the follow-ups list below and whatever the Vector client surfaces — se
   stack"). Rationale: ADR 0020 needs Lab; the stack was always core-tier by definition and was
   going to land anyway; user chose wiring the sanctioned libraries over hand-rolling colorimetry.
   Both roadmap entries moved to Done; ADR 0021's "not yet wired" parenthetical updated.
+- **ADR 0020 fallout fixed same day (ADR 0022):** `image.colormask` rejected any index not in
+  `image.getcolors()` — an ADR 0011 guard that assumed median-cut palettes where every index is
+  used by construction. Explicit palettes broke that assumption (a pinned color can win zero
+  pixels), failing whole jobs on palettes the server had just accepted; the client can't
+  pre-filter because it only reads the PLTE, never pixels. Fix is a deletion: the unused-index
+  raise is gone, `[0, 256)` bounds check stays, and the existing LUT already yields the all-white
+  empty mask. Verified end to end that potrace tolerates an all-white input and returns a valid
+  path-free SVG (the one place this could have failed downstream) — 4 new tests across
+  `test_color_modules.py` and `test_multicolor_e2e.py`. Full suite green (139 pass, 2
+  network-gated skip), ruff + mypy strict clean. Vector client already sends this shape and needs
+  no change; re-verify live by pinning a color that matches no pixel.
 
 ## Session notes (2026-07-18, local)
 
@@ -121,4 +132,4 @@ M5 is gated on a non-Vector consumer; don't start it without one. Worthwhile non
   that has push access.
 
 ---
-*Last updated: 2026-07-19 (ADR 0020/0021 implemented, core CV stack wired in)*
+*Last updated: 2026-07-19 (ADR 0020/0021 implemented, core CV stack wired in, ADR 0022 fix)*

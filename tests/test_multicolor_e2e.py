@@ -40,10 +40,29 @@ def sixteen_color_png(cell: int = 60) -> bytes:
     return buffer.getvalue()
 
 
-def separation_graph(payload_id: str, palette: dict[int, str]) -> dict[str, Any]:
+def four_color_png(size: int = 40) -> bytes:
+    """Four solid quadrants: red, green, blue, white."""
+    image = Image.new("RGB", (size, size), "white")
+    half = size // 2
+    for x in range(size):
+        for y in range(size):
+            if x < half and y < half:
+                image.putpixel((x, y), (255, 0, 0))
+            elif x >= half and y < half:
+                image.putpixel((x, y), (0, 255, 0))
+            elif x < half:
+                image.putpixel((x, y), (0, 0, 255))
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def separation_graph(
+    payload_id: str, palette: dict[int, str], post_params: dict[str, Any] | None = None
+) -> dict[str, Any]:
     """posterize -> per-index (mask -> trace -> colorize) -> binary merge tree."""
     nodes: list[dict[str, Any]] = [
-        {"id": "post", "module": "image.posterize", "params": {"colors": COLORS}}
+        {"id": "post", "module": "image.posterize", "params": post_params or {"colors": COLORS}}
     ]
     edges: list[dict[str, str]] = []
     for index, fill in palette.items():
@@ -125,6 +144,47 @@ async def _run_job(
             return doc
         await asyncio.sleep(0.025)
     raise AssertionError(f"job did not finish: {doc}")
+
+
+async def test_explicit_palette_with_unused_entry_traces_end_to_end(
+    client: httpx.AsyncClient,
+) -> None:
+    """ADR 0022: a pinned color no pixel maps to yields an empty layer, not a failure.
+
+    This is the test that pins potrace's tolerance of an all-white mask — the
+    one place the empty-mask contract could fail downstream.
+    """
+    session_id = (await client.post("/v1/sessions")).json()["id"]
+    upload = await client.post(
+        f"/v1/sessions/{session_id}/payloads",
+        params={"type": "raster/png"},
+        content=four_color_png(),
+    )
+    payload_id = upload.json()["id"]
+
+    # Entry 4 is exactly the pathological case: the image's four colors are all
+    # exact palette entries, so nothing is ever nearest to the purple.
+    entries = ["#ff0000", "#00ff00", "#0000ff", "#ffffff", "#800080"]
+    palette = dict(enumerate(entries))
+    graph = separation_graph(payload_id, palette, post_params={"palette": entries})
+
+    doc = await _run_job(client, session_id, graph)
+    assert doc["status"] == "completed", doc
+    assert len(doc["outputs"]) == len(entries) + 1  # 5 layers (one empty) + merge
+
+    # The unused index's layer traced to an empty SVG: valid, but no geometry.
+    unused_layer = next(o for o in doc["outputs"] if o["node"] == "color4")
+    svg = (
+        await client.get(f"/v1/sessions/{session_id}/payloads/{unused_layer['payload']}")
+    ).content
+    assert svg.startswith(b"<?xml") or svg.lstrip().startswith(b"<svg")
+    assert b"<path" not in svg  # nothing selected -> nothing traced
+
+    merged = (
+        await client.get(f"/v1/sessions/{session_id}/payloads/{doc['outputs'][-1]['payload']}")
+    ).content
+    for fill in entries[:4]:
+        assert fill.encode() in merged
 
 
 async def test_sixteen_color_trace_progressive(client: httpx.AsyncClient) -> None:
